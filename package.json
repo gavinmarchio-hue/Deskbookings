@@ -16,7 +16,6 @@
   },
   "devDependencies": {
     "gh-pages": "^4.0.0"
-    "lucide-react": "^0.263.1"
   },
   "browserslist": {
     "production": [">0.2%", "not dead"],
