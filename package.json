@@ -14,4 +14,23 @@
     "build": "react-scripts build"
   }
 }
-
+{
+  "name": "office-desk-booking",
+  "homepage": "https://yourusername.github.io/repositoryname",
+  "version": "1.0.0",
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "firebase": "^10.7.1"
+  },
+  "scripts": {
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d build",
+    "start": "react-scripts start",
+    "build": "react-scripts build"
+  },
+  "devDependencies": {
+    "gh-pages": "^4.0.0"
+  }
+}
