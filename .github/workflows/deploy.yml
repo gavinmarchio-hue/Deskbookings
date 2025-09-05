@@ -23,6 +23,7 @@ jobs:
           node-version: 18
       - run: npm ci || npm install
       - run: npm run build
+      # SPA fallback so refresh/deep links don't 404
       - name: Add SPA fallback
         run: cp build/index.html build/404.html
       - uses: actions/upload-pages-artifact@v3
