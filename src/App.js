@@ -243,12 +243,11 @@ const DeskBookingApp = () => {
 
 useEffect(() => {
   // Once employees are loaded, check localStorage for saved user
-  if (employees.length > 0) {
+  if (employees.length > 0 && typeof Storage !== 'undefined') {
     const savedUser = localStorage.getItem('deskBookingCurrentUser');
     if (savedUser && employees.includes(savedUser)) {
       setCurrentUser(savedUser);
     } else if (!employees.includes(currentUser)) {
-      // If current user doesn't exist in employee list, use first employee
       setCurrentUser(employees[0]);
     }
   }
@@ -749,11 +748,15 @@ useEffect(() => {
          <div className="flex items-center justify-center space-x-4">
            <select
   value={currentUser}
-  onChange={(e) => {
-    setCurrentUser(e.target.value);
+
+onChange={(e) => {
+  setCurrentUser(e.target.value);
+  if (typeof Storage !== 'undefined') {
     localStorage.setItem('deskBookingCurrentUser', e.target.value);
-  }}
-  className="px-3 py-1 border rounded text-sm"
+  }
+}}
+
+className="px-3 py-1 border rounded text-sm"
 >
              {employees.map(employee => (
                <option key={employee} value={employee}>{employee}</option>
