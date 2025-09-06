@@ -395,8 +395,7 @@ const bookAllWeek = async () => {
   </button>
 </div>
 
-<div className="space-y-3">
-    
+   
         <div className="space-y-3">
           {weekdays.map(date => {
             const available = getAvailableDesks(date);
