@@ -312,6 +312,25 @@ useEffect(() => {
     return userBookings.sort();
   };
 
+const bookAllWeek = async () => {
+  const weekdays = getNextWeekdays(5, currentWeek);
+  const availableDays = weekdays.filter(date => 
+    getAvailableDesks(date) > 0 && !isUserBooked(date, currentUser)
+  );
+  
+  if (availableDays.length === 0) {
+    alert('No available days to book this week');
+    return;
+  }
+  
+  const confirmed = window.confirm(`Book desks for all ${availableDays.length} available days this week?`);
+  if (confirmed) {
+    for (const date of availableDays) {
+      await bookDesk(date, currentUser);
+    }
+  }
+};
+  
   // Component views
   const WeekNavigator = () => (
     <div className="flex items-center justify-between bg-gray-100 p-4 rounded-lg mb-6">
@@ -365,7 +384,19 @@ useEffect(() => {
         </div>
         
         <WeekNavigator />
-        
+
+<div className="flex justify-end mb-4">
+  <button
+    onClick={bookAllWeek}
+    className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 flex items-center space-x-2 transition-colors"
+  >
+    <Plus size={16} />
+    <span>Book All Week</span>
+  </button>
+</div>
+
+<div className="space-y-3">
+    
         <div className="space-y-3">
           {weekdays.map(date => {
             const available = getAvailableDesks(date);
