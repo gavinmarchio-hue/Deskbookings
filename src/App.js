@@ -240,6 +240,20 @@ const DeskBookingApp = () => {
     localStorage.setItem('deskBookingCurrentUser', firstEmployee);
   }
 }, [employees, currentUser]);
+
+useEffect(() => {
+  // Once employees are loaded, check localStorage for saved user
+  if (employees.length > 0) {
+    const savedUser = localStorage.getItem('deskBookingCurrentUser');
+    if (savedUser && employees.includes(savedUser)) {
+      setCurrentUser(savedUser);
+    } else if (!employees.includes(currentUser)) {
+      // If current user doesn't exist in employee list, use first employee
+      setCurrentUser(employees[0]);
+    }
+  }
+}, [employees]);
+  
   // Booking functions
   const getBookingsForDate = (date) => {
     return bookings[date] || [];
