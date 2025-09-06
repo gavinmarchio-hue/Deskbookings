@@ -556,16 +556,10 @@ const DeskBookingApp = () => {
           </form>
         </div>
 
-        <div className="bg-white rounded-lg border">
-          <div className="flex items-center justify-between p-4 border-b">
-            <h3 className="font-semibold text-gray-900">Current Employees</h3>
-            <button
-              onClick={resetEmployees}
-              className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
-            >
-              Reset to Defaults
-            </button>
-          </div>
+       <div className="bg-white rounded-lg border">
+  <div className="p-4 border-b">
+    <h3 className="font-semibold text-gray-900">Current Employees</h3>
+  </div>
           
           <div className="p-4">
             {employees.length === 0 ? (
