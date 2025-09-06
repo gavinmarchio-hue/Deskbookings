@@ -223,35 +223,34 @@ const DeskBookingApp = () => {
     });
   };
 
-  // Initialize on component mount
-  useEffect(() => {
-    const initializeApp = async () => {
-      await loadEmployees();
-      await loadBookings();
-    };
-    initializeApp();
-  }, []);
-
-  useEffect(() => {
-  // If saved user doesn't exist in employee list, reset to first employee
-  if (employees.length > 0 && !employees.includes(currentUser)) {
-    const firstEmployee = employees[0];
-    setCurrentUser(firstEmployee);
-    localStorage.setItem('deskBookingCurrentUser', firstEmployee);
-  }
-}, [employees, currentUser]);
-
+// Initialize on component mount
 useEffect(() => {
-  // Once employees are loaded, check localStorage for saved user
-  if (employees.length > 0 && typeof Storage !== 'undefined') {
-    const savedUser = localStorage.getItem('deskBookingCurrentUser');
-    if (savedUser && employees.includes(savedUser)) {
-      setCurrentUser(savedUser);
-    } else if (!employees.includes(currentUser)) {
-      setCurrentUser(employees[0]);
+  const initializeApp = async () => {
+    await loadEmployees();
+    await loadBookings();
+  };
+  initializeApp();
+}, []);
+
+// Handle user persistence after employees load
+useEffect(() => {
+  if (employees.length > 0) {
+    // Check if localStorage is available
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const savedUser = localStorage.getItem('deskBookingCurrentUser');
+      if (savedUser && employees.includes(savedUser)) {
+        setCurrentUser(savedUser);
+      } else if (!employees.includes(currentUser)) {
+        setCurrentUser(employees[0]);
+      }
+    } else {
+      // No localStorage available, just ensure current user exists in employee list
+      if (!employees.includes(currentUser)) {
+        setCurrentUser(employees[0]);
+      }
     }
   }
-}, [employees]);
+}, [employees]); // Only depend on employees, not currentUser
   
   // Booking functions
   const getBookingsForDate = (date) => {
@@ -751,7 +750,7 @@ useEffect(() => {
 
 onChange={(e) => {
   setCurrentUser(e.target.value);
-  if (typeof Storage !== 'undefined') {
+  if (typeof window !== 'undefined' && window.localStorage) {
     localStorage.setItem('deskBookingCurrentUser', e.target.value);
   }
 }}
