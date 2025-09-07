@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
-// Mock Firebase - replace with your actual Firebase imports
-const db = {};
-const doc = () => ({});
-const getDoc = async () => ({ exists: () => false, data: () => ({}) });
-const setDoc = async () => {};
+import React, { useState, useEffect } from 'react';
+import { db } from './firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 // Icon components
 const Calendar = ({ size = 16, className = "" }) => (
@@ -89,25 +87,28 @@ const DeskBookingApp = () => {
   
   const TOTAL_DESKS = 18;
 
-  // Firebase functions - Load employees from your Firebase database
+  // Firebase functions
   const loadEmployees = async () => {
     try {
       const docRef = doc(db, 'settings', 'employees');
       const docSnap = await getDoc(docRef);
       
       if (docSnap.exists()) {
-        const employeeList = docSnap.data().list || [];
-        setEmployees(employeeList);
-        if (employeeList.length > 0 && !currentUser) {
-          setCurrentUser(employeeList[0]);
-        }
+        setEmployees(docSnap.data().list || []);
       } else {
-        // No employees found in database
-        setEmployees([]);
+        const defaultEmployees = [
+          'John Smith', 'Sarah Johnson', 'Mike Davis', 'Emma Wilson', 'Chris Brown',
+          'Lisa Garcia', 'David Lee', 'Anna Martinez', 'Ryan Taylor', 'Jessica White',
+          'Kevin Anderson', 'Michelle Thomas', 'Brian Jackson', 'Amy Rodriguez', 'Daniel Moore',
+          'Jennifer Lopez', 'Mark Thompson', 'Rachel Green', 'Steven Clark', 'Laura Hall',
+          'Peter Parker', 'Mary Jane', 'Tony Stark', 'Natasha Romanoff', 'Bruce Banner'
+        ];
+        await setDoc(docRef, { list: defaultEmployees });
+        setEmployees(defaultEmployees);
       }
     } catch (error) {
       console.error('Error loading employees:', error);
-      setEmployees([]);
+      setEmployees(['John Smith', 'Sarah Johnson', 'Mike Davis']);
     }
   };
 
@@ -147,6 +148,7 @@ const DeskBookingApp = () => {
     }
     setLoading(false);
   };
+
 
   // Employee management functions
   const addEmployee = async (name) => {
