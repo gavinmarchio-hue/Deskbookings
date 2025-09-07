@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { db } from './firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
 
-// Icon components (same as before)
+// Mock Firebase - replace with your actual Firebase imports
+const db = {};
+const doc = () => ({});
+const getDoc = async () => ({ exists: () => false, data: () => ({}) });
+const setDoc = async () => {};
+
+// Icon components
 const Calendar = ({ size = 16, className = "" }) => (
   <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -72,7 +76,7 @@ const ChevronRight = ({ size = 16, className = "" }) => (
 
 const DeskBookingApp = () => {
   // Basic state
-  const [currentUser, setCurrentUser] = useState('John Smith');
+  const [currentUser, setCurrentUser] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [activeView, setActiveView] = useState('calendar');
   const [currentWeek, setCurrentWeek] = useState(0);
@@ -85,28 +89,25 @@ const DeskBookingApp = () => {
   
   const TOTAL_DESKS = 18;
 
-  // Firebase functions
+  // Firebase functions - Load employees from your Firebase database
   const loadEmployees = async () => {
     try {
       const docRef = doc(db, 'settings', 'employees');
       const docSnap = await getDoc(docRef);
       
       if (docSnap.exists()) {
-        setEmployees(docSnap.data().list || []);
+        const employeeList = docSnap.data().list || [];
+        setEmployees(employeeList);
+        if (employeeList.length > 0 && !currentUser) {
+          setCurrentUser(employeeList[0]);
+        }
       } else {
-        const defaultEmployees = [
-          'John Smith', 'Sarah Johnson', 'Mike Davis', 'Emma Wilson', 'Chris Brown',
-          'Lisa Garcia', 'David Lee', 'Anna Martinez', 'Ryan Taylor', 'Jessica White',
-          'Kevin Anderson', 'Michelle Thomas', 'Brian Jackson', 'Amy Rodriguez', 'Daniel Moore',
-          'Jennifer Lopez', 'Mark Thompson', 'Rachel Green', 'Steven Clark', 'Laura Hall',
-          'Peter Parker', 'Mary Jane', 'Tony Stark', 'Natasha Romanoff', 'Bruce Banner'
-        ];
-        await setDoc(docRef, { list: defaultEmployees });
-        setEmployees(defaultEmployees);
+        // No employees found in database
+        setEmployees([]);
       }
     } catch (error) {
       console.error('Error loading employees:', error);
-      setEmployees(['John Smith', 'Sarah Johnson', 'Mike Davis']);
+      setEmployees([]);
     }
   };
 
@@ -171,36 +172,46 @@ const DeskBookingApp = () => {
     setBookings(updatedBookings);
   };
 
-  const resetEmployees = async () => {
-    const defaultEmployees = [
-      'John Smith', 'Sarah Johnson', 'Mike Davis', 'Emma Wilson', 'Chris Brown',
-      'Lisa Garcia', 'David Lee', 'Anna Martinez', 'Ryan Taylor', 'Jessica White',
-      'Kevin Anderson', 'Michelle Thomas', 'Brian Jackson', 'Amy Rodriguez', 'Daniel Moore',
-      'Jennifer Lopez', 'Mark Thompson', 'Rachel Green', 'Steven Clark', 'Laura Hall',
-      'Peter Parker', 'Mary Jane', 'Tony Stark', 'Natasha Romanoff', 'Bruce Banner'
-    ];
-    setEmployees(defaultEmployees);
-    await saveEmployees(defaultEmployees);
-  };
-
-  // Utility functions
+  // Fixed utility function for Australian timezone - weekdays only
   const getNextWeekdays = (count = 5, weekOffset = 0) => {
     const days = [];
-    const today = new Date();
+    
+    // Get current date in Australian timezone
+    const now = new Date();
+    const australianTime = new Date(now.toLocaleString("en-US", {timeZone: "Australia/Sydney"}));
+    
     let daysAdded = 0;
     let currentDay = weekOffset * 7;
     
+    // If we're looking at the current week, start from today or Monday
+    if (weekOffset === 0) {
+      // Find the start of the current week (Monday)
+      const dayOfWeek = australianTime.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // If Sunday, go back 6 days to Monday
+      currentDay = mondayOffset;
+    }
+    
     while (daysAdded < count) {
-      const date = new Date(today);
-      date.setDate(today.getDate() + currentDay);
+      const date = new Date(australianTime);
+      date.setDate(australianTime.getDate() + currentDay);
+      
+      // Get day of week (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
       const dayOfWeek = date.getDay();
       
+      // Only include Monday (1) through Friday (5) - NO WEEKENDS
       if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-        days.push(date.toISOString().split('T')[0]);
+        // Format date as YYYY-MM-DD
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
+        
+        days.push(dateStr);
         daysAdded++;
       }
       currentDay++;
     }
+    
     return days;
   };
 
@@ -208,49 +219,49 @@ const DeskBookingApp = () => {
     const weekdays = getNextWeekdays(5, weekOffset);
     if (weekdays.length === 0) return '';
     
-    const startDate = new Date(weekdays[0] + 'T00:00:00');
-    const endDate = new Date(weekdays[weekdays.length - 1] + 'T00:00:00');
+    const startDate = new Date(weekdays[0] + 'T12:00:00'); // Use noon to avoid timezone issues
+    const endDate = new Date(weekdays[weekdays.length - 1] + 'T12:00:00');
     
-    return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+    return `${startDate.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })}`;
   };
 
   const formatDate = (dateStr) => {
-    const date = new Date(dateStr + 'T00:00:00');
-    return date.toLocaleDateString('en-US', { 
+    const date = new Date(dateStr + 'T12:00:00'); // Use noon to avoid timezone issues
+    return date.toLocaleDateString('en-AU', { 
       weekday: 'short', 
       month: 'short', 
       day: 'numeric' 
     });
   };
 
-// Initialize on component mount
-useEffect(() => {
-  const initializeApp = async () => {
-    await loadEmployees();
-    await loadBookings();
-  };
-  initializeApp();
-}, []);
+  // Initialize on component mount
+  useEffect(() => {
+    const initializeApp = async () => {
+      await loadEmployees();
+      await loadBookings();
+    };
+    initializeApp();
+  }, []);
 
-// Handle user persistence after employees load
-useEffect(() => {
-  if (employees.length > 0) {
-    // Check if localStorage is available
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const savedUser = localStorage.getItem('deskBookingCurrentUser');
-      if (savedUser && employees.includes(savedUser)) {
-        setCurrentUser(savedUser);
-      } else if (!employees.includes(currentUser)) {
-        setCurrentUser(employees[0]);
-      }
-    } else {
-      // No localStorage available, just ensure current user exists in employee list
-      if (!employees.includes(currentUser)) {
-        setCurrentUser(employees[0]);
+  // Handle user persistence after employees load
+  useEffect(() => {
+    if (employees.length > 0) {
+      // Check if localStorage is available
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const savedUser = localStorage.getItem('deskBookingCurrentUser');
+        if (savedUser && employees.includes(savedUser)) {
+          setCurrentUser(savedUser);
+        } else if (!employees.includes(currentUser)) {
+          setCurrentUser(employees[0]);
+        }
+      } else {
+        // No localStorage available, just ensure current user exists in employee list
+        if (!employees.includes(currentUser)) {
+          setCurrentUser(employees[0]);
+        }
       }
     }
-  }
-}, [employees]); // Only depend on employees, not currentUser
+  }, [employees]);
   
   // Booking functions
   const getBookingsForDate = (date) => {
@@ -312,24 +323,24 @@ useEffect(() => {
     return userBookings.sort();
   };
 
-const bookAllWeek = async () => {
-  const weekdays = getNextWeekdays(5, currentWeek);
-  const availableDays = weekdays.filter(date => 
-    getAvailableDesks(date) > 0 && !isUserBooked(date, currentUser)
-  );
-  
-  if (availableDays.length === 0) {
-    alert('No available days to book this week');
-    return;
-  }
-  
-  const confirmed = window.confirm(`Book desks for all ${availableDays.length} available days this week?`);
-  if (confirmed) {
-    for (const date of availableDays) {
-      await bookDesk(date, currentUser);
+  const bookAllWeek = async () => {
+    const weekdays = getNextWeekdays(5, currentWeek);
+    const availableDays = weekdays.filter(date => 
+      getAvailableDesks(date) > 0 && !isUserBooked(date, currentUser)
+    );
+    
+    if (availableDays.length === 0) {
+      alert('No available days to book this week');
+      return;
     }
-  }
-};
+    
+    const confirmed = window.confirm(`Book desks for all ${availableDays.length} available days this week?`);
+    if (confirmed) {
+      for (const date of availableDays) {
+        await bookDesk(date, currentUser);
+      }
+    }
+  };
   
   // Component views
   const WeekNavigator = () => (
@@ -385,17 +396,16 @@ const bookAllWeek = async () => {
         
         <WeekNavigator />
 
-<div className="flex justify-end mb-4">
-  <button
-    onClick={bookAllWeek}
-    className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 flex items-center space-x-2 transition-colors"
-  >
-    <Plus size={16} />
-    <span>Book All Week</span>
-  </button>
-</div>
+        <div className="flex justify-end mb-4">
+          <button
+            onClick={bookAllWeek}
+            className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 flex items-center space-x-2 transition-colors"
+          >
+            <Plus size={16} />
+            <span>Book All Week</span>
+          </button>
+        </div>
 
-   
         <div className="space-y-3">
           {weekdays.map(date => {
             const available = getAvailableDesks(date);
@@ -588,34 +598,35 @@ const bookAllWeek = async () => {
 
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           <h3 className="font-semibold text-green-900 mb-3">Add New Employee</h3>
-          <form onSubmit={handleAddEmployee} className="flex space-x-2">
+          <div className="flex space-x-2">
             <input
               type="text"
               placeholder="Enter employee name..."
               value={newEmployeeName}
               onChange={(e) => setNewEmployeeName(e.target.value)}
               className="flex-1 px-3 py-2 border border-green-300 rounded-md text-sm"
+              onKeyPress={(e) => e.key === 'Enter' && handleAddEmployee(e)}
             />
             <button
-              type="submit"
+              onClick={handleAddEmployee}
               disabled={!newEmployeeName.trim()}
               className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-gray-400 text-sm"
             >
               Add Employee
             </button>
-          </form>
+          </div>
         </div>
 
-       <div className="bg-white rounded-lg border">
-  <div className="p-4 border-b">
-    <h3 className="font-semibold text-gray-900">Current Employees</h3>
-  </div>
+        <div className="bg-white rounded-lg border">
+          <div className="p-4 border-b">
+            <h3 className="font-semibold text-gray-900">Current Employees</h3>
+          </div>
           
           <div className="p-4">
             {employees.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <Users className="mx-auto h-12 w-12 text-gray-300 mb-4" />
-                <p>No employees configured</p>
+                <p>No employees loaded from database</p>
               </div>
             ) : (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -728,75 +739,77 @@ const bookAllWeek = async () => {
             >
               <Calendar size={16} className="inline mr-2" />
               Book Desk
-</button>
-           <button
-             onClick={() => setActiveView('bookings')}
-             className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-               activeView === 'bookings'
-                 ? 'bg-white text-gray-900 shadow-sm'
-                 : 'text-gray-500 hover:text-gray-700'
-             }`}
-           >
-             <User size={16} className="inline mr-2" />
-             My Bookings
-           </button>
-           <button
-             onClick={() => setActiveView('dashboard')}
-             className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-               activeView === 'dashboard'
-                 ? 'bg-white text-gray-900 shadow-sm'
-                 : 'text-gray-500 hover:text-gray-700'
-             }`}
-           >
-             <BarChart3 size={16} className="inline mr-2" />
-             Dashboard
-           </button>
-           <button
-             onClick={() => setActiveView('employees')}
-             className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-               activeView === 'employees'
-                 ? 'bg-white text-gray-900 shadow-sm'
-                 : 'text-gray-500 hover:text-gray-700'
-             }`}
-           >
-             <Users size={16} className="inline mr-2" />
-             Employees
-           </button>
-         </div>
-       </div>
+            </button>
+            <button
+              onClick={() => setActiveView('bookings')}
+              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeView === 'bookings'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <User size={16} className="inline mr-2" />
+              My Bookings
+            </button>
+            <button
+              onClick={() => setActiveView('dashboard')}
+              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeView === 'dashboard'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <BarChart3 size={16} className="inline mr-2" />
+              Dashboard
+            </button>
+            <button
+              onClick={() => setActiveView('employees')}
+              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeView === 'employees'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Users size={16} className="inline mr-2" />
+              Employees
+            </button>
+          </div>
+        </div>
 
-       <div className="bg-white rounded-lg shadow-sm border p-6">
-         {activeView === 'calendar' && <CalendarView />}
-         {activeView === 'bookings' && <MyBookingsView />}
-         {activeView === 'dashboard' && <DashboardView />}
-         {activeView === 'employees' && <EmployeeManagementView />}
-         {activeView === 'daily' && <DailyView />}
-       </div>
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          {activeView === 'calendar' && <CalendarView />}
+          {activeView === 'bookings' && <MyBookingsView />}
+          {activeView === 'dashboard' && <DashboardView />}
+          {activeView === 'employees' && <EmployeeManagementView />}
+          {activeView === 'daily' && <DailyView />}
+        </div>
 
-       <div className="mt-6 text-center text-sm text-gray-500">
-         <div className="flex items-center justify-center space-x-4">
-           <select
-  value={currentUser}
-
-onChange={(e) => {
-  setCurrentUser(e.target.value);
-  if (typeof window !== 'undefined' && window.localStorage) {
-    localStorage.setItem('deskBookingCurrentUser', e.target.value);
-  }
-}}
-
-className="px-3 py-1 border rounded text-sm"
->
-             {employees.map(employee => (
-               <option key={employee} value={employee}>{employee}</option>
-             ))}
-           </select>
-           <span>Switch user to test different views</span>
-         </div>
-       </div>
-     </div>
-   </div>
- );
+        <div className="mt-6 text-center text-sm text-gray-500">
+          <div className="flex items-center justify-center space-x-4">
+            {employees.length > 0 && (
+              <>
+                <select
+                  value={currentUser}
+                  onChange={(e) => {
+                    setCurrentUser(e.target.value);
+                    if (typeof window !== 'undefined' && window.localStorage) {
+                      localStorage.setItem('deskBookingCurrentUser', e.target.value);
+                    }
+                  }}
+                  className="px-3 py-1 border rounded text-sm"
+                >
+                  {employees.map(employee => (
+                    <option key={employee} value={employee}>{employee}</option>
+                  ))}
+                </select>
+                <span>Switch user to test different views</span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default DeskBookingApp;
