@@ -687,4 +687,131 @@ const bookAllWeek = async () => {
             <div 
               className={`h-3 rounded-full transition-all duration-300 ${
                 dayBookings.length > 14 ? 'bg-red-500' :
+                dayBookings.length > 10 ? 'bg-yellow-500' : 'bg-green-500'
+              }`}
+              style={{ width: `${(dayBookings.length / TOTAL_DESKS) * 100}%` }}
+            />
+          </div>
+          
+          {dayBookings.length === 0 ? (
+            <p className="text-gray-500 text-center py-8">No bookings for this day</p>
+          ) : (
+            <div>
+              <h4 className="font-medium mb-3">Who's Coming In ({dayBookings.length}):</h4>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2">
+                {dayBookings.sort().map((employee, index) => (
+                  <div key={index} className="flex items-center space-x-2 p-2 bg-blue-50 rounded border border-blue-100">
+                    <User size={16} className="text-blue-600" />
+                    <span className="text-sm">{employee}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-lg font-medium text-gray-900 mb-2">Loading...</div>
+          <div className="text-sm text-gray-500">Connecting to database</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Office Desk Booking</h1>
+          <p className="text-gray-600 mb-3">Manage your weekday workspace reservations • {TOTAL_DESKS} desks available</p>
+        </div>
+
+        <div className="mb-6">
+          <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg max-w-2xl">
+            <button
+              onClick={() => setActiveView('calendar')}
+              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeView === 'calendar'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Calendar size={16} className="inline mr-2" />
+              Book Desk
+            </button>
+           <button
+             onClick={() => setActiveView('bookings')}
+             className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+               activeView === 'bookings'
+                 ? 'bg-white text-gray-900 shadow-sm'
+                 : 'text-gray-500 hover:text-gray-700'
+             }`}
+           >
+             <User size={16} className="inline mr-2" />
+             My Bookings
+           </button>
+           <button
+             onClick={() => setActiveView('dashboard')}
+             className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+               activeView === 'dashboard'
+                 ? 'bg-white text-gray-900 shadow-sm'
+                 : 'text-gray-500 hover:text-gray-700'
+             }`}
+           >
+             <BarChart3 size={16} className="inline mr-2" />
+             Dashboard
+           </button>
+           <button
+             onClick={() => setActiveView('employees')}
+             className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+               activeView === 'employees'
+                 ? 'bg-white text-gray-900 shadow-sm'
+                 : 'text-gray-500 hover:text-gray-700'
+             }`}
+           >
+             <Users size={16} className="inline mr-2" />
+             Employees
+           </button>
+         </div>
+       </div>
+
+       <div className="bg-white rounded-lg shadow-sm border p-6">
+         {activeView === 'calendar' && <CalendarView />}
+         {activeView === 'bookings' && <MyBookingsView />}
+         {activeView === 'dashboard' && <DashboardView />}
+         {activeView === 'employees' && <EmployeeManagementView />}
+         {activeView === 'daily' && <DailyView />}
+       </div>
+
+       <div className="mt-6 text-center text-sm text-gray-500">
+         <div className="flex items-center justify-center space-x-4">
+           <select
+             value={currentUser}
+             onChange={(e) => {
+               setCurrentUser(e.target.value);
+               if (typeof window !== 'undefined' && window.localStorage) {
+                 localStorage.setItem('deskBookingCurrentUser', e.target.value);
+               }
+             }}
+             className="px-3 py-1 border rounded text-sm"
+           >
+             {employees.map(employee => (
+               <option key={employee} value={employee}>{employee}</option>
+             ))}
+           </select>
+           <span>Switch user to test different views</span>
+         </div>
+       </div>
+     </div>
+   </div>
+ );
+};
+
+export default DeskBookingApp;
                 
