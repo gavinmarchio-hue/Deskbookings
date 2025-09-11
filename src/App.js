@@ -732,7 +732,7 @@ const bookAllWeek = async () => {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Office Desk Booking</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Adbri Market Street Office Desk Bookings</h1>
           <p className="text-gray-600 mb-3">Manage your weekday workspace reservations • {TOTAL_DESKS} desks available</p>
         </div>
 
