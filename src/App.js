@@ -191,18 +191,28 @@ const getNextWeekdays = (count = 5, weekOffset = 0) => {
   const now = new Date();
   const australianTime = new Date(now.toLocaleString("en-US", {timeZone: "Australia/Sydney"}));
   
+  console.log('Current Australian Time:', australianTime);
+  console.log('Day of week:', australianTime.getDay(), '(0=Sun, 1=Mon, etc)');
+  
   // Calculate the Monday of the target week
   const dayOfWeek = australianTime.getDay();
   const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
   
+  console.log('Monday offset:', mondayOffset);
+  console.log('Week offset:', weekOffset);
+  
   // Start from Monday of the specified week
   let currentDay = mondayOffset + (weekOffset * 7);
+  
+  console.log('Starting currentDay:', currentDay);
   
   let daysAdded = 0;
   
   while (daysAdded < count) {
     const date = new Date(australianTime);
     date.setDate(australianTime.getDate() + currentDay);
+    
+    console.log('Checking date:', date.toISOString(), 'Day:', date.getDay());
     
     // Get day of week (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
     const checkDayOfWeek = date.getDay();
@@ -215,8 +225,8 @@ const getNextWeekdays = (count = 5, weekOffset = 0) => {
     currentDay++;
   }
   
-  return days;
-};
+  console.log('Final days array:', days);
+  return days;};
 
   const getWeekRange = (weekOffset) => {
     const weekdays = getNextWeekdays(5, weekOffset);
