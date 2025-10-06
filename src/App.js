@@ -183,7 +183,7 @@ const DeskBookingApp = () => {
     await saveEmployees(defaultEmployees);
   };
 
- // FIXED: Utility function for Australian timezone - weekdays only
+// FIXED: Utility function for Australian timezone - weekdays only
 const getNextWeekdays = (count = 5, weekOffset = 0) => {
   const days = [];
   
@@ -191,30 +191,24 @@ const getNextWeekdays = (count = 5, weekOffset = 0) => {
   const now = new Date();
   const australianTime = new Date(now.toLocaleString("en-US", {timeZone: "Australia/Sydney"}));
   
-  let daysAdded = 0;
-  let currentDay;
+  // Calculate the Monday of the target week
+  const dayOfWeek = australianTime.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
   
-  if (weekOffset === 0) {
-    // For current week, start from today or Monday (whichever comes first)
-    const dayOfWeek = australianTime.getDay();
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    currentDay = mondayOffset;
-  } else {
-    // For future weeks, always start from Monday of that specific week
-    const dayOfWeek = australianTime.getDay();
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    currentDay = mondayOffset + (weekOffset * 7);
-  }
+  // Start from Monday of the specified week
+  let currentDay = mondayOffset + (weekOffset * 7);
+  
+  let daysAdded = 0;
   
   while (daysAdded < count) {
     const date = new Date(australianTime);
     date.setDate(australianTime.getDate() + currentDay);
     
     // Get day of week (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
-    const dayOfWeek = date.getDay();
+    const checkDayOfWeek = date.getDay();
     
     // Only include Monday (1) through Friday (5) - NO WEEKENDS
-    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+    if (checkDayOfWeek >= 1 && checkDayOfWeek <= 5) {
       days.push(date.toISOString().split('T')[0]);
       daysAdded++;
     }
