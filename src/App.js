@@ -221,15 +221,6 @@ const getNextWeekdays = (count = 5, weekOffset = 0) => {
   
   return days;
 };
-This version:
-
-Simplifies the date calculation
-Explicitly generates exactly 5 days (Mon-Fri) without checking day of week in a loop
-Should avoid any timezone confusion
-
-Save the file, refresh your browser, and let me know if it now shows Monday-Friday correctly.RetryClaude can make mistakes. Please double-check responses. Sonnet 4.5  
-  console.log('Final days array:', days);
-  return days;};
 
   const getWeekRange = (weekOffset) => {
     const weekdays = getNextWeekdays(5, weekOffset);
