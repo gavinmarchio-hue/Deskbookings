@@ -189,42 +189,45 @@ const getNextWeekdays = (count = 5, weekOffset = 0) => {
   
   // Get current date in Australian timezone (Sydney)
   const now = new Date();
-  const australianTime = new Date(now.toLocaleString("en-US", {timeZone: "Australia/Sydney"}));
+  const australianTimeStr = now.toLocaleString("en-US", {timeZone: "Australia/Sydney"});
+  const australianTime = new Date(australianTimeStr);
   
-  console.log('Current Australian Time:', australianTime);
-  console.log('Day of week:', australianTime.getDay(), '(0=Sun, 1=Mon, etc)');
+  // Calculate Monday of the target week
+  const currentDayOfWeek = australianTime.getDay();
   
-  // Calculate the Monday of the target week
-  const dayOfWeek = australianTime.getDay();
-  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  
-  console.log('Monday offset:', mondayOffset);
-  console.log('Week offset:', weekOffset);
-  
-  // Start from Monday of the specified week
-  let currentDay = mondayOffset + (weekOffset * 7);
-  
-  console.log('Starting currentDay:', currentDay);
-  
-  let daysAdded = 0;
-  
-  while (daysAdded < count) {
-    const date = new Date(australianTime);
-    date.setDate(australianTime.getDate() + currentDay);
-    
-    console.log('Checking date:', date.toISOString(), 'Day:', date.getDay());
-    
-    // Get day of week (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
-    const checkDayOfWeek = date.getDay();
-    
-    // Only include Monday (1) through Friday (5) - NO WEEKENDS
-    if (checkDayOfWeek >= 1 && checkDayOfWeek <= 5) {
-      days.push(date.toISOString().split('T')[0]);
-      daysAdded++;
-    }
-    currentDay++;
+  // Calculate days back to Monday (0=Sun needs -6, 1=Mon needs 0, 2=Tue needs -1, etc)
+  let daysToMonday;
+  if (currentDayOfWeek === 0) {
+    daysToMonday = -6; // Sunday
+  } else {
+    daysToMonday = 1 - currentDayOfWeek; // Mon=0, Tue=-1, Wed=-2, etc
   }
   
+  // Create a date for Monday of the target week
+  const targetMonday = new Date(australianTime);
+  targetMonday.setDate(australianTime.getDate() + daysToMonday + (weekOffset * 7));
+  
+  // Generate 5 weekdays starting from that Monday
+  for (let i = 0; i < 5; i++) {
+    const weekday = new Date(targetMonday);
+    weekday.setDate(targetMonday.getDate() + i);
+    
+    const year = weekday.getFullYear();
+    const month = String(weekday.getMonth() + 1).padStart(2, '0');
+    const day = String(weekday.getDate()).padStart(2, '0');
+    
+    days.push(`${year}-${month}-${day}`);
+  }
+  
+  return days;
+};
+This version:
+
+Simplifies the date calculation
+Explicitly generates exactly 5 days (Mon-Fri) without checking day of week in a loop
+Should avoid any timezone confusion
+
+Save the file, refresh your browser, and let me know if it now shows Monday-Friday correctly.RetryClaude can make mistakes. Please double-check responses. Sonnet 4.5  
   console.log('Final days array:', days);
   return days;};
 
