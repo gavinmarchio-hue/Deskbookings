@@ -128,60 +128,6 @@ const DeskBookingApp = () => {
     }
   };
 
-  const loadBookings = async () => {
-  try {
-    const weekdays = getNextWeekdays(maxWeeksAhead * 5);
-    const bookingsData = {};
-    
-    for (const date of weekdays) {
-      const docRef = doc(db, 'bookings', date);
-      const docSnap = await getDoc(docRef);
-      bookingsData[date] = docSnap.exists() ? (docSnap.data().employees || []) : [];
-    }
-    
-    setBookings(bookingsData);
-  } catch (error) {
-    console.error('Error loading bookings:', error);
-    setBookings({});
-  }
-};
-  
-  // Employee management functions
-  const addEmployee = async (name) => {
-    if (name.trim() && !employees.includes(name.trim())) {
-      const newEmployees = [...employees, name.trim()].sort();
-      setEmployees(newEmployees);
-      await saveEmployees(newEmployees);
-    }
-  };
-
-  const removeEmployee = async (name) => {
-    const newEmployees = employees.filter(emp => emp !== name);
-    setEmployees(newEmployees);
-    await saveEmployees(newEmployees);
-    
-    // Remove from all bookings
-    const updatedBookings = {};
-    for (const [date, empList] of Object.entries(bookings)) {
-      const filteredList = empList.filter(emp => emp !== name);
-      updatedBookings[date] = filteredList;
-      await saveBooking(date, filteredList);
-    }
-    setBookings(updatedBookings);
-  };
-
-  const resetEmployees = async () => {
-    const defaultEmployees = [
-      'John Smith', 'Sarah Johnson', 'Mike Davis', 'Emma Wilson', 'Chris Brown',
-      'Lisa Garcia', 'David Lee', 'Anna Martinez', 'Ryan Taylor', 'Jessica White',
-      'Kevin Anderson', 'Michelle Thomas', 'Brian Jackson', 'Amy Rodriguez', 'Daniel Moore',
-      'Jennifer Lopez', 'Mark Thompson', 'Rachel Green', 'Steven Clark', 'Laura Hall',
-      'Peter Parker', 'Mary Jane', 'Tony Stark', 'Natasha Romanoff', 'Bruce Banner'
-    ];
-    setEmployees(defaultEmployees);
-    await saveEmployees(defaultEmployees);
-  };
-
 // FIXED: Utility function for Australian timezone - weekdays only
 const getNextWeekdays = (count = 5, weekOffset = 0) => {
   const days = [];
@@ -239,6 +185,62 @@ const getNextWeekdays = (count = 5, weekOffset = 0) => {
       day: 'numeric' 
     });
   };
+
+  
+  const loadBookings = async () => {
+  try {
+    const weekdays = getNextWeekdays(maxWeeksAhead * 5);
+    const bookingsData = {};
+    
+    for (const date of weekdays) {
+      const docRef = doc(db, 'bookings', date);
+      const docSnap = await getDoc(docRef);
+      bookingsData[date] = docSnap.exists() ? (docSnap.data().employees || []) : [];
+    }
+    
+    setBookings(bookingsData);
+  } catch (error) {
+    console.error('Error loading bookings:', error);
+    setBookings({});
+  }
+};
+  
+  // Employee management functions
+  const addEmployee = async (name) => {
+    if (name.trim() && !employees.includes(name.trim())) {
+      const newEmployees = [...employees, name.trim()].sort();
+      setEmployees(newEmployees);
+      await saveEmployees(newEmployees);
+    }
+  };
+
+  const removeEmployee = async (name) => {
+    const newEmployees = employees.filter(emp => emp !== name);
+    setEmployees(newEmployees);
+    await saveEmployees(newEmployees);
+    
+    // Remove from all bookings
+    const updatedBookings = {};
+    for (const [date, empList] of Object.entries(bookings)) {
+      const filteredList = empList.filter(emp => emp !== name);
+      updatedBookings[date] = filteredList;
+      await saveBooking(date, filteredList);
+    }
+    setBookings(updatedBookings);
+  };
+
+  const resetEmployees = async () => {
+    const defaultEmployees = [
+      'John Smith', 'Sarah Johnson', 'Mike Davis', 'Emma Wilson', 'Chris Brown',
+      'Lisa Garcia', 'David Lee', 'Anna Martinez', 'Ryan Taylor', 'Jessica White',
+      'Kevin Anderson', 'Michelle Thomas', 'Brian Jackson', 'Amy Rodriguez', 'Daniel Moore',
+      'Jennifer Lopez', 'Mark Thompson', 'Rachel Green', 'Steven Clark', 'Laura Hall',
+      'Peter Parker', 'Mary Jane', 'Tony Stark', 'Natasha Romanoff', 'Bruce Banner'
+    ];
+    setEmployees(defaultEmployees);
+    await saveEmployees(defaultEmployees);
+  };
+
 
 // Initialize on component mount
 useEffect(() => {
