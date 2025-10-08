@@ -144,7 +144,6 @@ const DeskBookingApp = () => {
     console.error('Error loading bookings:', error);
     setBookings({});
   }
-  setLoading(false);
 };
   
   // Employee management functions
@@ -244,12 +243,14 @@ const getNextWeekdays = (count = 5, weekOffset = 0) => {
 // Initialize on component mount
 useEffect(() => {
   const initializeApp = async () => {
+    setLoading(true);
     await loadEmployees();
     await loadBookings();
+    setLoading(false);
   };
   initializeApp();
 }, []);
-
+ 
 // Handle user persistence after employees load
 useEffect(() => {
   if (employees.length > 0) {
