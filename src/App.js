@@ -128,55 +128,6 @@ const DeskBookingApp = () => {
     }
   };
 
-// FIXED: Utility function for Australian timezone - weekdays only
-const getNextWeekdays = (count = 5, weekOffset = 0) => {
-  const days = [];
-  
-  // Get current date in Australian timezone (Sydney) - more reliable method
-  const now = new Date();
-  const formatter = new Intl.DateTimeFormat('en-AU', {
-    timeZone: 'Australia/Sydney',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
-  
-  const parts = formatter.formatToParts(now);
-  const year = parseInt(parts.find(p => p.type === 'year').value);
-  const month = parseInt(parts.find(p => p.type === 'month').value) - 1; // months are 0-indexed
-  const day = parseInt(parts.find(p => p.type === 'day').value);
-  
-  const australianTime = new Date(year, month, day);
-  
-  // Calculate Monday of the target week
-  const currentDayOfWeek = australianTime.getDay();
-  
-  // Calculate days back to Monday
-  let daysToMonday;
-  if (currentDayOfWeek === 0) {
-    daysToMonday = -6; // Sunday
-  } else {
-    daysToMonday = 1 - currentDayOfWeek; // Mon=0, Tue=-1, Wed=-2, etc
-  }
-  
-  // Create a date for Monday of the target week
-  const targetMonday = new Date(australianTime);
-  targetMonday.setDate(australianTime.getDate() + daysToMonday + (weekOffset * 7));
-  
-  // Generate 5 weekdays starting from that Monday
-  for (let i = 0; i < 5; i++) {
-    const weekday = new Date(targetMonday);
-    weekday.setDate(targetMonday.getDate() + i);
-    
-    const y = weekday.getFullYear();
-    const m = String(weekday.getMonth() + 1).padStart(2, '0');
-    const d = String(weekday.getDate()).padStart(2, '0');
-    
-    days.push(`${y}-${m}-${d}`);
-  }
-  
-  return days;
-};
 
   const getWeekRange = (weekOffset) => {
     const weekdays = getNextWeekdays(5, weekOffset);
