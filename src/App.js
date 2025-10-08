@@ -129,24 +129,24 @@ const DeskBookingApp = () => {
   };
 
   const loadBookings = async () => {
-    try {
-      const weekdays = getNextWeekdays(maxWeeksAhead * 5);
-      const bookingsData = {};
-      
-      for (const date of weekdays) {
-        const docRef = doc(db, 'bookings', date);
-        const docSnap = await getDoc(docRef);
-        bookingsData[date] = docSnap.exists() ? (docSnap.data().employees || []) : [];
-      }
-      
-      setBookings(bookingsData);
-    } catch (error) {
-      console.error('Error loading bookings:', error);
-      setBookings({});
+  try {
+    const weekdays = getNextWeekdays(maxWeeksAhead * 5);
+    const bookingsData = {};
+    
+    for (const date of weekdays) {
+      const docRef = doc(db, 'bookings', date);
+      const docSnap = await getDoc(docRef);
+      bookingsData[date] = docSnap.exists() ? (docSnap.data().employees || []) : [];
     }
-    setLoading(false);
-  };
-
+    
+    setBookings(bookingsData);
+  } catch (error) {
+    console.error('Error loading bookings:', error);
+    setBookings({});
+  }
+  setLoading(false);
+};
+  
   // Employee management functions
   const addEmployee = async (name) => {
     if (name.trim() && !employees.includes(name.trim())) {
