@@ -189,22 +189,29 @@ const getNextWeekdays = (count = 5, weekOffset = 0) => {
   
   const loadBookings = async () => {
   try {
+    console.log('Starting to load bookings...');
     const weekdays = getNextWeekdays(maxWeeksAhead * 5);
+    console.log('Weekdays to load:', weekdays);
     const bookingsData = {};
     
     for (const date of weekdays) {
       const docRef = doc(db, 'bookings', date);
       const docSnap = await getDoc(docRef);
-      bookingsData[date] = docSnap.exists() ? (docSnap.data().employees || []) : [];
+      const employeeList = docSnap.exists() ? (docSnap.data().employees || []) : [];
+      bookingsData[date] = employeeList;
+      if (employeeList.length > 0) {
+        console.log(`Found bookings for ${date}:`, employeeList);
+      }
     }
     
+    console.log('All bookings loaded:', bookingsData);
     setBookings(bookingsData);
   } catch (error) {
     console.error('Error loading bookings:', error);
     setBookings({});
   }
 };
-  
+ 
   // Employee management functions
   const addEmployee = async (name) => {
     if (name.trim() && !employees.includes(name.trim())) {
