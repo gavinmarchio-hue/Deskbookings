@@ -268,6 +268,11 @@ const DeskBookingApp = () => {
       const newEmployees = [...employees, name.trim()].sort();
       setEmployees(newEmployees);
       await saveEmployees(newEmployees);
+      
+      // Log the employee addition
+      await logChange('ADD_EMPLOYEE', '', name.trim(), { 
+        totalEmployees: newEmployees.length 
+      });
     }
   };
 
@@ -483,6 +488,7 @@ const DeskBookingApp = () => {
         case 'BOOK': return 'text-green-600 bg-green-50 border-green-200';
         case 'CANCEL': return 'text-red-600 bg-red-50 border-red-200';
         case 'REMOVE_EMPLOYEE': return 'text-orange-600 bg-orange-50 border-orange-200';
+        case 'ADD_EMPLOYEE': return 'text-blue-600 bg-blue-50 border-blue-200';
         default: return 'text-gray-600 bg-gray-50 border-gray-200';
       }
     };
@@ -495,6 +501,8 @@ const DeskBookingApp = () => {
           return `${log.performedBy} cancelled ${log.affectedUser}'s booking`;
         case 'REMOVE_EMPLOYEE':
           return `${log.performedBy} removed ${log.affectedUser} from the system (booking auto-cancelled)`;
+        case 'ADD_EMPLOYEE':
+          return `${log.performedBy} added ${log.affectedUser} to the employee list`;
         default:
           return `${log.performedBy} performed ${log.action} for ${log.affectedUser}`;
       }
@@ -528,7 +536,7 @@ const DeskBookingApp = () => {
                   <div className="flex-1">
                     <div className="flex items-center space-x-3 mb-2">
                       <span className={`px-3 py-1 rounded-md text-xs font-semibold uppercase ${getActionColor(log.action)}`}>
-                        {log.action}
+                        {log.action.replace('_', ' ')}
                       </span>
                       <span className="text-sm text-gray-600">
                         {formatTimestamp(log.timestamp)}
@@ -536,12 +544,21 @@ const DeskBookingApp = () => {
                     </div>
                     <div className="text-sm">
                       {getActionText(log)}
-                      {' on '}
-                      <strong>{formatDate(log.date)}</strong>
+                      {log.date && (
+                        <>
+                          {' on '}
+                          <strong>{formatDate(log.date)}</strong>
+                        </>
+                      )}
                     </div>
                     {log.desksRemaining !== undefined && (
                       <div className="text-xs text-gray-500 mt-1">
                         {log.desksRemaining} desk(s) remaining after this action
+                      </div>
+                    )}
+                    {log.totalEmployees !== undefined && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        Total employees: {log.totalEmployees}
                       </div>
                     )}
                   </div>
