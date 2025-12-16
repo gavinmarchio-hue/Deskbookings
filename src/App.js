@@ -292,6 +292,12 @@ const DeskBookingApp = () => {
     setEmployees(newEmployees);
     await saveEmployees(newEmployees);
     
+    // Log the employee removal
+    await logChange('REMOVE_EMPLOYEE', '', name, { 
+      bookingsAffected: bookingCount,
+      totalEmployees: newEmployees.length
+    });
+    
     // Remove from all bookings
     const updatedBookings = {};
     for (const [date, empList] of Object.entries(bookings)) {
@@ -299,10 +305,11 @@ const DeskBookingApp = () => {
       updatedBookings[date] = filteredList;
       await saveBooking(date, filteredList);
       
-      // Log if employee had bookings removed
+      // Log each booking cancellation
       if (empList.includes(name)) {
-        await logChange('REMOVE_EMPLOYEE', date, name, { 
-          reason: 'Employee removed from system' 
+        await logChange('CANCEL', date, name, { 
+          reason: 'Employee removed from system',
+          desksRemaining: TOTAL_DESKS - filteredList.length
         });
       }
     }
@@ -498,9 +505,12 @@ const DeskBookingApp = () => {
         case 'BOOK':
           return `${log.performedBy} booked a desk for ${log.affectedUser}`;
         case 'CANCEL':
+          if (log.reason) {
+            return `${log.affectedUser}'s booking was cancelled (${log.reason})`;
+          }
           return `${log.performedBy} cancelled ${log.affectedUser}'s booking`;
         case 'REMOVE_EMPLOYEE':
-          return `${log.performedBy} removed ${log.affectedUser} from the system (booking auto-cancelled)`;
+          return `${log.performedBy} removed ${log.affectedUser} from the employee list`;
         case 'ADD_EMPLOYEE':
           return `${log.performedBy} added ${log.affectedUser} to the employee list`;
         default:
@@ -559,6 +569,16 @@ const DeskBookingApp = () => {
                     {log.totalEmployees !== undefined && (
                       <div className="text-xs text-gray-500 mt-1">
                         Total employees: {log.totalEmployees}
+                      </div>
+                    )}
+                    {log.bookingsAffected !== undefined && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        {log.bookingsAffected} booking(s) cancelled
+                      </div>
+                    )}
+                    {log.reason && (
+                      <div className="text-xs text-gray-500 mt-1 italic">
+                        {log.reason}
                       </div>
                     )}
                   </div>
