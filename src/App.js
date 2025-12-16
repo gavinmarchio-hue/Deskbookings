@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 
 // Icon components (same as before)
 const Calendar = ({ size = 16, className = "" }) => (
@@ -70,6 +70,16 @@ const ChevronRight = ({ size = 16, className = "" }) => (
   </svg>
 );
 
+const FileText = ({ size = 16, className = "" }) => (
+  <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <line x1="16" y1="13" x2="8" y2="13"/>
+    <line x1="16" y1="17" x2="8" y2="17"/>
+    <polyline points="10 9 9 9 8 9"/>
+  </svg>
+);
+
 const DeskBookingApp = () => {
   // Basic state
   const [currentUser, setCurrentUser] = useState('John Smith');
@@ -122,63 +132,88 @@ const DeskBookingApp = () => {
   const saveBooking = async (date, employeeList) => {
     try {
       const docRef = doc(db, 'bookings', date);
-      await setDoc(docRef, { employees: employeeList });
+      await setDoc(docRef, { 
+        employees: employeeList,
+        lastUpdated: new Date().toISOString()
+      });
+      return true;
     } catch (error) {
       console.error('Error saving booking:', error);
+      alert(`Failed to save booking for ${date}. Please try again.`);
+      return false;
     }
   };
 
-// FIXED: Utility function for Australian timezone - weekdays only
-const getNextWeekdays = (count = 5, weekOffset = 0) => {
-  const days = [];
-  
-  // Get current date in Australian timezone (Sydney)
-  const now = new Date();
-  const formatter = new Intl.DateTimeFormat('en-AU', {
-    timeZone: 'Australia/Sydney',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
-  
-  const parts = formatter.formatToParts(now);
-  const year = parseInt(parts.find(p => p.type === 'year').value);
-  const month = parseInt(parts.find(p => p.type === 'month').value) - 1;
-  const day = parseInt(parts.find(p => p.type === 'day').value);
-  
-  const australianTime = new Date(year, month, day);
-  
-  // Calculate Monday of the target week
-  const currentDayOfWeek = australianTime.getDay();
-  
-  // Calculate days to LAST Monday (not yesterday if today is Tuesday)
-  let daysToLastMonday;
-  if (currentDayOfWeek === 0) {
-    daysToLastMonday = -6; // Sunday, go back 6 days to last Monday
-  } else {
-    daysToLastMonday = -(currentDayOfWeek - 1); // Tue=2 → -1, Wed=3 → -2, etc.
-  }
-  
-  // Start from the Monday of the target week
-  const targetMonday = new Date(australianTime);
-  targetMonday.setDate(australianTime.getDate() + daysToLastMonday + (weekOffset * 7));
-  
-  // Generate weekdays
-  for (let i = 0; i < count; i++) {
-    const weekday = new Date(targetMonday);
-    weekday.setDate(targetMonday.getDate() + i);
-    
-    const y = weekday.getFullYear();
-    const m = String(weekday.getMonth() + 1).padStart(2, '0');
-    const d = String(weekday.getDate()).padStart(2, '0');
-    
-    days.push(`${y}-${m}-${d}`);
-  }
-  
-  return days;
-};
+  // AUDIT LOGGING FUNCTION - NEW!
+  const logChange = async (action, date, affectedUser, details = {}) => {
+    try {
+      const timestamp = new Date().toISOString();
+      const logRef = doc(db, 'audit_log', `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+      
+      await setDoc(logRef, {
+        action,           // 'BOOK', 'CANCEL', 'REMOVE_EMPLOYEE', etc.
+        date,            // Which date was affected
+        affectedUser,    // Who's booking was changed
+        performedBy: currentUser,  // Who made the change
+        timestamp,
+        ...details       // Any extra info
+      });
+    } catch (error) {
+      console.error('Failed to log action:', error);
+      // Don't block the main action if logging fails
+    }
+  };
 
-  
+  // Utility function for Australian timezone - weekdays only
+  const getNextWeekdays = (count = 5, weekOffset = 0) => {
+    const days = [];
+    
+    // Get current date in Australian timezone (Sydney)
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-AU', {
+      timeZone: 'Australia/Sydney',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    
+    const parts = formatter.formatToParts(now);
+    const year = parseInt(parts.find(p => p.type === 'year').value);
+    const month = parseInt(parts.find(p => p.type === 'month').value) - 1;
+    const day = parseInt(parts.find(p => p.type === 'day').value);
+    
+    const australianTime = new Date(year, month, day);
+    
+    // Calculate Monday of the target week
+    const currentDayOfWeek = australianTime.getDay();
+    
+    // Calculate days to LAST Monday (not yesterday if today is Tuesday)
+    let daysToLastMonday;
+    if (currentDayOfWeek === 0) {
+      daysToLastMonday = -6; // Sunday, go back 6 days to last Monday
+    } else {
+      daysToLastMonday = -(currentDayOfWeek - 1); // Tue=2 → -1, Wed=3 → -2, etc.
+    }
+    
+    // Start from the Monday of the target week
+    const targetMonday = new Date(australianTime);
+    targetMonday.setDate(australianTime.getDate() + daysToLastMonday + (weekOffset * 7));
+    
+    // Generate weekdays
+    for (let i = 0; i < count; i++) {
+      const weekday = new Date(targetMonday);
+      weekday.setDate(targetMonday.getDate() + i);
+      
+      const y = weekday.getFullYear();
+      const m = String(weekday.getMonth() + 1).padStart(2, '0');
+      const d = String(weekday.getDate()).padStart(2, '0');
+      
+      days.push(`${y}-${m}-${d}`);
+    }
+    
+    return days;
+  };
+
   const getWeekRange = (weekOffset) => {
     const weekdays = getNextWeekdays(5, weekOffset);
     if (weekdays.length === 0) return '';
@@ -198,35 +233,34 @@ const getNextWeekdays = (count = 5, weekOffset = 0) => {
     });
   };
 
-  
   const loadBookings = async () => {
-  try {
-    console.log('Starting to load bookings...');
-    const bookingsData = {};
-    
-    // Load each week individually
-    for (let week = 0; week < maxWeeksAhead; week++) {
-      const weekdays = getNextWeekdays(5, week);
-      console.log(`Loading week ${week}:`, weekdays);
+    try {
+      console.log('Starting to load bookings...');
+      const bookingsData = {};
       
-      for (const date of weekdays) {
-        const docRef = doc(db, 'bookings', date);
-        const docSnap = await getDoc(docRef);
-        const employeeList = docSnap.exists() ? (docSnap.data().employees || []) : [];
-        bookingsData[date] = employeeList;
-        if (employeeList.length > 0) {
-          console.log(`Found bookings for ${date}:`, employeeList);
+      // Load each week individually
+      for (let week = 0; week < maxWeeksAhead; week++) {
+        const weekdays = getNextWeekdays(5, week);
+        console.log(`Loading week ${week}:`, weekdays);
+        
+        for (const date of weekdays) {
+          const docRef = doc(db, 'bookings', date);
+          const docSnap = await getDoc(docRef);
+          const employeeList = docSnap.exists() ? (docSnap.data().employees || []) : [];
+          bookingsData[date] = employeeList;
+          if (employeeList.length > 0) {
+            console.log(`Found bookings for ${date}:`, employeeList);
+          }
         }
       }
+      
+      console.log('All bookings loaded:', bookingsData);
+      setBookings(bookingsData);
+    } catch (error) {
+      console.error('Error loading bookings:', error);
+      setBookings({});
     }
-    
-    console.log('All bookings loaded:', bookingsData);
-    setBookings(bookingsData);
-  } catch (error) {
-    console.error('Error loading bookings:', error);
-    setBookings({});
-  }
-};
+  };
  
   // Employee management functions
   const addEmployee = async (name) => {
@@ -238,6 +272,17 @@ const getNextWeekdays = (count = 5, weekOffset = 0) => {
   };
 
   const removeEmployee = async (name) => {
+    const bookingCount = Object.values(bookings)
+      .flat()
+      .filter(emp => emp === name).length;
+    
+    if (bookingCount > 0) {
+      const confirmed = window.confirm(
+        `${name} has ${bookingCount} booking(s). Removing them will cancel ALL their bookings. Continue?`
+      );
+      if (!confirmed) return;
+    }
+    
     const newEmployees = employees.filter(emp => emp !== name);
     setEmployees(newEmployees);
     await saveEmployees(newEmployees);
@@ -248,6 +293,13 @@ const getNextWeekdays = (count = 5, weekOffset = 0) => {
       const filteredList = empList.filter(emp => emp !== name);
       updatedBookings[date] = filteredList;
       await saveBooking(date, filteredList);
+      
+      // Log if employee had bookings removed
+      if (empList.includes(name)) {
+        await logChange('REMOVE_EMPLOYEE', date, name, { 
+          reason: 'Employee removed from system' 
+        });
+      }
     }
     setBookings(updatedBookings);
   };
@@ -264,37 +316,36 @@ const getNextWeekdays = (count = 5, weekOffset = 0) => {
     await saveEmployees(defaultEmployees);
   };
 
-
-// Initialize on component mount
-useEffect(() => {
-  const initializeApp = async () => {
-    setLoading(true);
-    await loadEmployees();
-    await loadBookings();
-    setLoading(false);
-  };
-  initializeApp();
-}, []);
+  // Initialize on component mount
+  useEffect(() => {
+    const initializeApp = async () => {
+      setLoading(true);
+      await loadEmployees();
+      await loadBookings();
+      setLoading(false);
+    };
+    initializeApp();
+  }, []);
  
-// Handle user persistence after employees load
-useEffect(() => {
-  if (employees.length > 0) {
-    // Check if localStorage is available
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const savedUser = localStorage.getItem('deskBookingCurrentUser');
-      if (savedUser && employees.includes(savedUser)) {
-        setCurrentUser(savedUser);
-      } else if (!employees.includes(currentUser)) {
-        setCurrentUser(employees[0]);
-      }
-    } else {
-      // No localStorage available, just ensure current user exists in employee list
-      if (!employees.includes(currentUser)) {
-        setCurrentUser(employees[0]);
+  // Handle user persistence after employees load
+  useEffect(() => {
+    if (employees.length > 0) {
+      // Check if localStorage is available
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const savedUser = localStorage.getItem('deskBookingCurrentUser');
+        if (savedUser && employees.includes(savedUser)) {
+          setCurrentUser(savedUser);
+        } else if (!employees.includes(currentUser)) {
+          setCurrentUser(employees[0]);
+        }
+      } else {
+        // No localStorage available, just ensure current user exists in employee list
+        if (!employees.includes(currentUser)) {
+          setCurrentUser(employees[0]);
+        }
       }
     }
-  }
-}, [employees]); // Only depend on employees, not currentUser
+  }, [employees]); // Only depend on employees, not currentUser
   
   // Booking functions
   const getBookingsForDate = (date) => {
@@ -316,7 +367,14 @@ useEffect(() => {
         ...prev,
         [date]: newBookings
       }));
-      await saveBooking(date, newBookings);
+      const success = await saveBooking(date, newBookings);
+      
+      // Log the booking
+      if (success) {
+        await logChange('BOOK', date, user, { 
+          desksRemaining: TOTAL_DESKS - newBookings.length 
+        });
+      }
     }
   };
 
@@ -326,7 +384,14 @@ useEffect(() => {
       ...prev,
       [date]: newBookings
     }));
-    await saveBooking(date, newBookings);
+    const success = await saveBooking(date, newBookings);
+    
+    // Log the cancellation
+    if (success) {
+      await logChange('CANCEL', date, user, { 
+        desksRemaining: TOTAL_DESKS - newBookings.length 
+      });
+    }
   };
 
   const getCapacityColor = (available, total) => {
@@ -356,24 +421,138 @@ useEffect(() => {
     return userBookings.sort();
   };
 
-const bookAllWeek = async () => {
-  const weekdays = getNextWeekdays(5, currentWeek);
-  const availableDays = weekdays.filter(date => 
-    getAvailableDesks(date) > 0 && !isUserBooked(date, currentUser)
-  );
-  
-  if (availableDays.length === 0) {
-    alert('No available days to book this week');
-    return;
-  }
-  
-  const confirmed = window.confirm(`Book desks for all ${availableDays.length} available days this week?`);
-  if (confirmed) {
-    for (const date of availableDays) {
-      await bookDesk(date, currentUser);
+  const bookAllWeek = async () => {
+    const weekdays = getNextWeekdays(5, currentWeek);
+    const availableDays = weekdays.filter(date => 
+      getAvailableDesks(date) > 0 && !isUserBooked(date, currentUser)
+    );
+    
+    if (availableDays.length === 0) {
+      alert('No available days to book this week');
+      return;
     }
-  }
-};
+    
+    const confirmed = window.confirm(`Book desks for all ${availableDays.length} available days this week?`);
+    if (confirmed) {
+      for (const date of availableDays) {
+        await bookDesk(date, currentUser);
+      }
+    }
+  };
+
+  // AUDIT LOG VIEW - NEW!
+  const AuditLogView = () => {
+    const [logs, setLogs] = useState([]);
+    const [logLoading, setLogLoading] = useState(true);
+
+    useEffect(() => {
+      const loadLogs = async () => {
+        try {
+          const logsRef = collection(db, 'audit_log');
+          const q = query(logsRef, orderBy('timestamp', 'desc'), limit(100));
+          const snapshot = await getDocs(q);
+          
+          const logData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          setLogs(logData);
+        } catch (error) {
+          console.error('Error loading logs:', error);
+        } finally {
+          setLogLoading(false);
+        }
+      };
+      
+      loadLogs();
+    }, []);
+
+    const formatTimestamp = (timestamp) => {
+      return new Date(timestamp).toLocaleString('en-AU', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    };
+
+    const getActionColor = (action) => {
+      switch(action) {
+        case 'BOOK': return 'text-green-600 bg-green-50 border-green-200';
+        case 'CANCEL': return 'text-red-600 bg-red-50 border-red-200';
+        case 'REMOVE_EMPLOYEE': return 'text-orange-600 bg-orange-50 border-orange-200';
+        default: return 'text-gray-600 bg-gray-50 border-gray-200';
+      }
+    };
+
+    const getActionText = (log) => {
+      switch(log.action) {
+        case 'BOOK':
+          return `${log.performedBy} booked a desk for ${log.affectedUser}`;
+        case 'CANCEL':
+          return `${log.performedBy} cancelled ${log.affectedUser}'s booking`;
+        case 'REMOVE_EMPLOYEE':
+          return `${log.performedBy} removed ${log.affectedUser} from the system (booking auto-cancelled)`;
+        default:
+          return `${log.performedBy} performed ${log.action} for ${log.affectedUser}`;
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold text-gray-900">Audit Log</h2>
+          <div className="text-sm text-gray-500">
+            Showing last 100 actions
+          </div>
+        </div>
+        
+        {logLoading ? (
+          <div className="text-center py-12">
+            <div className="text-lg font-medium text-gray-900 mb-2">Loading audit logs...</div>
+            <div className="text-sm text-gray-500">Fetching activity history</div>
+          </div>
+        ) : logs.length === 0 ? (
+          <div className="text-center py-12 text-gray-500">
+            <FileText className="mx-auto h-12 w-12 text-gray-300 mb-4" />
+            <p className="text-lg font-medium">No audit logs yet</p>
+            <p className="text-sm mt-1">Activity will appear here as users book and cancel desks</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {logs.map(log => (
+              <div key={log.id} className={`p-4 border rounded-lg ${getActionColor(log.action)}`}>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <span className={`px-3 py-1 rounded-md text-xs font-semibold uppercase ${getActionColor(log.action)}`}>
+                        {log.action}
+                      </span>
+                      <span className="text-sm text-gray-600">
+                        {formatTimestamp(log.timestamp)}
+                      </span>
+                    </div>
+                    <div className="text-sm">
+                      {getActionText(log)}
+                      {' on '}
+                      <strong>{formatDate(log.date)}</strong>
+                    </div>
+                    {log.desksRemaining !== undefined && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        {log.desksRemaining} desk(s) remaining after this action
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
   
   // Component views
   const WeekNavigator = () => (
@@ -429,16 +608,15 @@ const bookAllWeek = async () => {
         
         <WeekNavigator />
 
-<div className="flex justify-end mb-4">
-  <button
-    onClick={bookAllWeek}
-    className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 flex items-center space-x-2 transition-colors"
-  >
-    <Plus size={16} />
-    <span>Book All Week</span>
-  </button>
-</div>
-
+        <div className="flex justify-end mb-4">
+          <button
+            onClick={bookAllWeek}
+            className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 flex items-center space-x-2 transition-colors"
+          >
+            <Plus size={16} />
+            <span>Book All Week</span>
+          </button>
+        </div>
    
         <div className="space-y-3">
           {weekdays.map(date => {
@@ -650,10 +828,10 @@ const bookAllWeek = async () => {
           </form>
         </div>
 
-       <div className="bg-white rounded-lg border">
-  <div className="p-4 border-b">
-    <h3 className="font-semibold text-gray-900">Current Employees</h3>
-  </div>
+        <div className="bg-white rounded-lg border">
+          <div className="p-4 border-b">
+            <h3 className="font-semibold text-gray-900">Current Employees</h3>
+          </div>
           
           <div className="p-4">
             {employees.length === 0 ? (
@@ -761,7 +939,7 @@ const bookAllWeek = async () => {
         </div>
 
         <div className="mb-6">
-          <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg max-w-2xl">
+          <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
             <button
               onClick={() => setActiveView('calendar')}
               className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -773,73 +951,86 @@ const bookAllWeek = async () => {
               <Calendar size={16} className="inline mr-2" />
               Book Desk
             </button>
-           <button
-             onClick={() => setActiveView('bookings')}
-             className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-               activeView === 'bookings'
-                 ? 'bg-white text-gray-900 shadow-sm'
-                 : 'text-gray-500 hover:text-gray-700'
-             }`}
-           >
-             <User size={16} className="inline mr-2" />
-             My Bookings
-           </button>
-           <button
-             onClick={() => setActiveView('dashboard')}
-             className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-               activeView === 'dashboard'
-                 ? 'bg-white text-gray-900 shadow-sm'
-                 : 'text-gray-500 hover:text-gray-700'
-             }`}
-           >
-             <BarChart3 size={16} className="inline mr-2" />
-             Dashboard
-           </button>
-           <button
-             onClick={() => setActiveView('employees')}
-             className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-               activeView === 'employees'
-                 ? 'bg-white text-gray-900 shadow-sm'
-                 : 'text-gray-500 hover:text-gray-700'
-             }`}
-           >
-             <Users size={16} className="inline mr-2" />
-             Employees
-           </button>
-         </div>
-       </div>
+            <button
+              onClick={() => setActiveView('bookings')}
+              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeView === 'bookings'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <User size={16} className="inline mr-2" />
+              My Bookings
+            </button>
+            <button
+              onClick={() => setActiveView('dashboard')}
+              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeView === 'dashboard'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <BarChart3 size={16} className="inline mr-2" />
+              Dashboard
+            </button>
+            <button
+              onClick={() => setActiveView('employees')}
+              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeView === 'employees'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Users size={16} className="inline mr-2" />
+              Employees
+            </button>
+            {currentUser === 'Gavin Marchio' && (
+              <button
+                onClick={() => setActiveView('auditlog')}
+                className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeView === 'auditlog'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <FileText size={16} className="inline mr-2" />
+                Audit Log
+              </button>
+            )}
+          </div>
+        </div>
 
-       <div className="bg-white rounded-lg shadow-sm border p-6">
-         {activeView === 'calendar' && <CalendarView />}
-         {activeView === 'bookings' && <MyBookingsView />}
-         {activeView === 'dashboard' && <DashboardView />}
-         {activeView === 'employees' && <EmployeeManagementView />}
-         {activeView === 'daily' && <DailyView />}
-       </div>
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          {activeView === 'calendar' && <CalendarView />}
+          {activeView === 'bookings' && <MyBookingsView />}
+          {activeView === 'dashboard' && <DashboardView />}
+          {activeView === 'employees' && <EmployeeManagementView />}
+          {activeView === 'daily' && <DailyView />}
+          {activeView === 'auditlog' && <AuditLogView />}
+        </div>
 
-       <div className="mt-6 text-center text-sm text-gray-500">
-         <div className="flex items-center justify-center space-x-4">
-           <select
-             value={currentUser}
-             onChange={(e) => {
-               setCurrentUser(e.target.value);
-               if (typeof window !== 'undefined' && window.localStorage) {
-                 localStorage.setItem('deskBookingCurrentUser', e.target.value);
-               }
-             }}
-             className="px-3 py-1 border rounded text-sm"
-           >
-             {employees.map(employee => (
-               <option key={employee} value={employee}>{employee}</option>
-             ))}
-           </select>
-           <span>Switch user to test different views</span>
-         </div>
-       </div>
-     </div>
-   </div>
- );
+        <div className="mt-6 text-center text-sm text-gray-500">
+          <div className="flex items-center justify-center space-x-4">
+            <select
+              value={currentUser}
+              onChange={(e) => {
+                setCurrentUser(e.target.value);
+                if (typeof window !== 'undefined' && window.localStorage) {
+                  localStorage.setItem('deskBookingCurrentUser', e.target.value);
+                }
+              }}
+              className="px-3 py-1 border rounded text-sm"
+            >
+              {employees.map(employee => (
+                <option key={employee} value={employee}>{employee}</option>
+              ))}
+            </select>
+            <span>Switch user to test different views</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default DeskBookingApp;
-                
