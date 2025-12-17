@@ -358,6 +358,31 @@ const DeskBookingApp = () => {
       }
     }
   }, [employees]); // Only depend on employees, not currentUser
+
+  // Reload current week's bookings when week changes
+  useEffect(() => {
+    const reloadCurrentWeek = async () => {
+      if (employees.length === 0) return; // Wait for initial load
+      
+      const weekdays = getNextWeekdays(5, currentWeek);
+      const updatedBookings = { ...bookings };
+      
+      for (const date of weekdays) {
+        try {
+          const docRef = doc(db, 'bookings', date);
+          const docSnap = await getDoc(docRef);
+          const employeeList = docSnap.exists() ? (docSnap.data().employees || []) : [];
+          updatedBookings[date] = employeeList;
+        } catch (error) {
+          console.error(`Error reloading bookings for ${date}:`, error);
+        }
+      }
+      
+      setBookings(updatedBookings);
+    };
+    
+    reloadCurrentWeek();
+  }, [currentWeek]); // Reload when week changes
   
   // Booking functions
   const getBookingsForDate = (date) => {
@@ -382,6 +407,11 @@ const DeskBookingApp = () => {
       // Check if user already has a booking
       if (currentBookings.includes(user)) {
         alert('You already have a booking for this date');
+        // Refresh local state to match reality
+        setBookings(prev => ({
+          ...prev,
+          [date]: currentBookings
+        }));
         return;
       }
       
