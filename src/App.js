@@ -373,36 +373,108 @@ const DeskBookingApp = () => {
   };
 
   const bookDesk = async (date, user) => {
-    if (getAvailableDesks(date) > 0 && !isUserBooked(date, user)) {
-      const newBookings = [...(bookings[date] || []), user];
+    try {
+      // CRITICAL FIX: Read current data from Firebase FIRST to avoid race conditions
+      const docRef = doc(db, 'bookings', date);
+      const docSnap = await getDoc(docRef);
+      const currentBookings = docSnap.exists() ? (docSnap.data().employees || []) : [];
+      
+      // Check if user already has a booking
+      if (currentBookings.includes(user)) {
+        alert('You already have a booking for this date');
+        return;
+      }
+      
+      // Check if desks are still available
+      if (currentBookings.length >= TOTAL_DESKS) {
+        alert('Sorry, all desks are now booked for this date');
+        // Refresh local state to match reality
+        setBookings(prev => ({
+          ...prev,
+          [date]: currentBookings
+        }));
+        return;
+      }
+      
+      // Add the new booking to current data
+      const newBookings = [...currentBookings, user];
+      
+      // Update local state optimistically
       setBookings(prev => ({
         ...prev,
         [date]: newBookings
       }));
+      
+      // Save to Firebase
       const success = await saveBooking(date, newBookings);
       
-      // Log the booking
       if (success) {
+        // Log the booking
         await logChange('BOOK', date, user, { 
           desksRemaining: TOTAL_DESKS - newBookings.length 
         });
+      } else {
+        // Revert local state if save failed
+        setBookings(prev => ({
+          ...prev,
+          [date]: currentBookings
+        }));
       }
+    } catch (error) {
+      console.error('Error booking desk:', error);
+      alert('Failed to book desk. Please try again.');
+      // Reload bookings to get current state
+      await loadBookings();
     }
   };
 
   const cancelBooking = async (date, user) => {
-    const newBookings = (bookings[date] || []).filter(bookedUser => bookedUser !== user);
-    setBookings(prev => ({
-      ...prev,
-      [date]: newBookings
-    }));
-    const success = await saveBooking(date, newBookings);
-    
-    // Log the cancellation
-    if (success) {
-      await logChange('CANCEL', date, user, { 
-        desksRemaining: TOTAL_DESKS - newBookings.length 
-      });
+    try {
+      // CRITICAL FIX: Read current data from Firebase FIRST to avoid race conditions
+      const docRef = doc(db, 'bookings', date);
+      const docSnap = await getDoc(docRef);
+      const currentBookings = docSnap.exists() ? (docSnap.data().employees || []) : [];
+      
+      // Check if user actually has a booking to cancel
+      if (!currentBookings.includes(user)) {
+        alert('No booking found for this date');
+        // Refresh local state to match reality
+        setBookings(prev => ({
+          ...prev,
+          [date]: currentBookings
+        }));
+        return;
+      }
+      
+      // Remove the user's booking
+      const newBookings = currentBookings.filter(bookedUser => bookedUser !== user);
+      
+      // Update local state optimistically
+      setBookings(prev => ({
+        ...prev,
+        [date]: newBookings
+      }));
+      
+      // Save to Firebase
+      const success = await saveBooking(date, newBookings);
+      
+      if (success) {
+        // Log the cancellation
+        await logChange('CANCEL', date, user, { 
+          desksRemaining: TOTAL_DESKS - newBookings.length 
+        });
+      } else {
+        // Revert local state if save failed
+        setBookings(prev => ({
+          ...prev,
+          [date]: currentBookings
+        }));
+      }
+    } catch (error) {
+      console.error('Error canceling booking:', error);
+      alert('Failed to cancel booking. Please try again.');
+      // Reload bookings to get current state
+      await loadBookings();
     }
   };
 
@@ -435,9 +507,25 @@ const DeskBookingApp = () => {
 
   const bookAllWeek = async () => {
     const weekdays = getNextWeekdays(5, currentWeek);
-    const availableDays = weekdays.filter(date => 
-      getAvailableDesks(date) > 0 && !isUserBooked(date, currentUser)
-    );
+    
+    // Check availability for each day by reading from Firebase
+    const availableDays = [];
+    for (const date of weekdays) {
+      try {
+        const docRef = doc(db, 'bookings', date);
+        const docSnap = await getDoc(docRef);
+        const currentBookings = docSnap.exists() ? (docSnap.data().employees || []) : [];
+        
+        const available = TOTAL_DESKS - currentBookings.length;
+        const userNotBooked = !currentBookings.includes(currentUser);
+        
+        if (available > 0 && userNotBooked) {
+          availableDays.push(date);
+        }
+      } catch (error) {
+        console.error(`Error checking availability for ${date}:`, error);
+      }
+    }
     
     if (availableDays.length === 0) {
       alert('No available days to book this week');
@@ -446,9 +534,22 @@ const DeskBookingApp = () => {
     
     const confirmed = window.confirm(`Book desks for all ${availableDays.length} available days this week?`);
     if (confirmed) {
+      let successCount = 0;
       for (const date of availableDays) {
-        await bookDesk(date, currentUser);
+        try {
+          await bookDesk(date, currentUser);
+          successCount++;
+        } catch (error) {
+          console.error(`Failed to book ${date}:`, error);
+        }
       }
+      
+      if (successCount < availableDays.length) {
+        alert(`Booked ${successCount} of ${availableDays.length} days. Some bookings may have failed.`);
+      }
+      
+      // Reload to ensure we have current state
+      await loadBookings();
     }
   };
 
