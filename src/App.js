@@ -172,50 +172,19 @@ const DeskBookingApp = () => {
     }
   };
 
-  // Utility function for Australian timezone - weekdays only (Monday-Friday)
+  // Utility function for Australian timezone - FINAL WEEK ONLY (Feb 3-7, 2026)
   const getNextWeekdays = (count = 5, weekOffset = 0) => {
-    const days = [];
+    // Hardcoded final week: Monday Feb 3 to Friday Feb 7, 2026
+    // Only showing this one week since office is closing
+    const finalWeek = [
+      '2026-02-02', // Monday
+      '2026-02-03', // Tuesday
+      '2026-02-04', // Wednesday (last bookable day)
+      '2026-02-05', // Thursday
+      '2026-02-06'  // Friday
+    ];
     
-    // Get current date in Australian timezone (Sydney)
-    const now = new Date();
-    const formatter = new Intl.DateTimeFormat('en-AU', {
-      timeZone: 'Australia/Sydney',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-    
-    const parts = formatter.formatToParts(now);
-    const year = parseInt(parts.find(p => p.type === 'year').value);
-    const month = parseInt(parts.find(p => p.type === 'month').value) - 1;
-    const day = parseInt(parts.find(p => p.type === 'day').value);
-    
-    const australianTime = new Date(year, month, day);
-    
-    // Calculate Monday of the target week
-    const currentDayOfWeek = australianTime.getDay();
-    
-    // Calculate days to LAST Monday (not yesterday if today is Tuesday)
-    let daysToLastMonday;
-    if (currentDayOfWeek === 0) {
-      daysToLastMonday = -6; // Sunday, go back 6 days to last Monday
-    } else {
-      daysToLastMonday = -(currentDayOfWeek - 1); // Tue=2 → -1, Wed=3 → -2, etc.
-    }
-    
-    // Start from the Monday of the target week
-    const targetMonday = new Date(australianTime);
-    targetMonday.setDate(australianTime.getDate() + daysToLastMonday + (weekOffset * 7));
-    
-    // Generate exactly 5 weekdays: Monday through Friday
-    for (let i = 0; i < 5; i++) {
-      const targetDate = new Date(targetMonday);
-      targetDate.setDate(targetMonday.getDate() + i);
-      const dateString = targetDate.toISOString().split('T')[0];
-      days.push(dateString);
-    }
-    
-    return days;
+    return finalWeek;
   };
 
   const formatDate = (dateString) => {
@@ -361,46 +330,18 @@ const DeskBookingApp = () => {
   const CalendarView = () => {
     const weekDays = getNextWeekdays(5, currentWeek);
     
-    // Check if we're on the final week (week containing Feb 4)
-    const isFinalWeek = weekDays.some(day => day === CUTOFF_DATE);
+    // Final week is hardcoded
+    const isFinalWeek = true;
     
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={() => setCurrentWeek(prev => prev - 1)}
-            disabled={currentWeek === 0}
-            className={`px-4 py-2 rounded-md flex items-center space-x-2 ${
-              currentWeek === 0
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-blue-500 text-white hover:bg-blue-600'
-            }`}
-          >
-            <ChevronLeft size={16} />
-            <span>Previous Week</span>
-          </button>
-          
+        <div className="flex items-center justify-center mb-4">
           <h2 className="text-xl font-semibold text-gray-900">
-            Week of {formatDate(weekDays[0])}
-            {isFinalWeek && (
-              <span className="ml-3 text-sm font-normal text-red-600 bg-red-50 px-3 py-1 rounded-full">
-                Final Week - Office Closing
-              </span>
-            )}
+            Final Week: Monday February 2nd - Friday February 6th, 2026
+            <span className="ml-3 text-sm font-normal text-red-600 bg-red-50 px-3 py-1 rounded-full">
+              Last Booking Day: Wednesday Feb 4th
+            </span>
           </h2>
-          
-          <button
-            onClick={() => setCurrentWeek(prev => prev + 1)}
-            disabled={isFinalWeek}
-            className={`px-4 py-2 rounded-md flex items-center space-x-2 ${
-              isFinalWeek
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-blue-500 text-white hover:bg-blue-600'
-            }`}
-          >
-            <span>Next Week</span>
-            <ChevronRight size={16} />
-          </button>
         </div>
 
         {isFinalWeek && (
