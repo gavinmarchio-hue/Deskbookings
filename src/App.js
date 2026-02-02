@@ -81,6 +81,9 @@ const FileText = ({ size = 16, className = "" }) => (
 );
 
 const DeskBookingApp = () => {
+  // OFFICE CLOSURE DATE - Last bookable day is Wednesday February 4th, 2026
+  const CUTOFF_DATE = '2026-02-04';
+  
   // Basic state
   const [currentUser, setCurrentUser] = useState('John Smith');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -94,6 +97,11 @@ const DeskBookingApp = () => {
   const [loading, setLoading] = useState(true);
   
   const TOTAL_DESKS = 18;
+
+  // Check if a date is after the cutoff
+  const isDateUnavailable = (dateString) => {
+    return dateString > CUTOFF_DATE;
+  };
 
   // Firebase functions
   const loadEmployees = async () => {
@@ -144,7 +152,7 @@ const DeskBookingApp = () => {
     }
   };
 
-  // AUDIT LOGGING FUNCTION - NEW!
+  // AUDIT LOGGING FUNCTION
   const logChange = async (action, date, affectedUser, details = {}) => {
     try {
       const timestamp = new Date().toISOString();
@@ -201,31 +209,31 @@ const DeskBookingApp = () => {
     
     // Generate weekdays
     for (let i = 0; i < count; i++) {
-      const weekday = new Date(targetMonday);
-      weekday.setDate(targetMonday.getDate() + i);
+      const targetDate = new Date(targetMonday);
+      targetDate.setDate(targetMonday.getDate() + i);
       
-      const y = weekday.getFullYear();
-      const m = String(weekday.getMonth() + 1).padStart(2, '0');
-      const d = String(weekday.getDate()).padStart(2, '0');
-      
-      days.push(`${y}-${m}-${d}`);
+      const dayOfWeek = targetDate.getDay();
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        const dateString = targetDate.toISOString().split('T')[0];
+        days.push(dateString);
+      }
     }
     
     return days;
   };
 
-  const getWeekRange = (weekOffset) => {
-    const weekdays = getNextWeekdays(5, weekOffset);
-    if (weekdays.length === 0) return '';
-    
-    const startDate = new Date(weekdays[0] + 'T00:00:00');
-    const endDate = new Date(weekdays[weekdays.length - 1] + 'T00:00:00');
-    
-    return `${startDate.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })}`;
+  const formatDate = (dateString) => {
+    const date = new Date(dateString + 'T12:00:00');
+    return date.toLocaleDateString('en-AU', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
   };
 
-  const formatDate = (dateStr) => {
-    const date = new Date(dateStr + 'T00:00:00');
+  const formatShortDate = (dateString) => {
+    const date = new Date(dateString + 'T12:00:00');
     return date.toLocaleDateString('en-AU', { 
       weekday: 'short', 
       month: 'short', 
@@ -233,383 +241,492 @@ const DeskBookingApp = () => {
     });
   };
 
-  const loadBookings = async () => {
-    try {
-      console.log('Starting to load bookings...');
-      const bookingsData = {};
-      
-      // Load each week individually
-      for (let week = 0; week < maxWeeksAhead; week++) {
-        const weekdays = getNextWeekdays(5, week);
-        console.log(`Loading week ${week}:`, weekdays);
-        
-        for (const date of weekdays) {
-          const docRef = doc(db, 'bookings', date);
-          const docSnap = await getDoc(docRef);
-          const employeeList = docSnap.exists() ? (docSnap.data().employees || []) : [];
-          bookingsData[date] = employeeList;
-          if (employeeList.length > 0) {
-            console.log(`Found bookings for ${date}:`, employeeList);
-          }
-        }
-      }
-      
-      console.log('All bookings loaded:', bookingsData);
-      setBookings(bookingsData);
-    } catch (error) {
-      console.error('Error loading bookings:', error);
-      setBookings({});
-    }
-  };
- 
-  // Employee management functions
-  const addEmployee = async (name) => {
-    if (name.trim() && !employees.includes(name.trim())) {
-      const newEmployees = [...employees, name.trim()].sort();
-      setEmployees(newEmployees);
-      await saveEmployees(newEmployees);
-      
-      // Log the employee addition
-      await logChange('ADD_EMPLOYEE', '', name.trim(), { 
-        totalEmployees: newEmployees.length 
-      });
-    }
-  };
-
-  const removeEmployee = async (name) => {
-    const bookingCount = Object.values(bookings)
-      .flat()
-      .filter(emp => emp === name).length;
-    
-    if (bookingCount > 0) {
-      const confirmed = window.confirm(
-        `${name} has ${bookingCount} booking(s). Removing them will cancel ALL their bookings. Continue?`
-      );
-      if (!confirmed) return;
-    }
-    
-    const newEmployees = employees.filter(emp => emp !== name);
-    setEmployees(newEmployees);
-    await saveEmployees(newEmployees);
-    
-    // Log the employee removal
-    await logChange('REMOVE_EMPLOYEE', '', name, { 
-      bookingsAffected: bookingCount,
-      totalEmployees: newEmployees.length
-    });
-    
-    // Remove from all bookings
-    const updatedBookings = {};
-    for (const [date, empList] of Object.entries(bookings)) {
-      const filteredList = empList.filter(emp => emp !== name);
-      updatedBookings[date] = filteredList;
-      await saveBooking(date, filteredList);
-      
-      // Log each booking cancellation
-      if (empList.includes(name)) {
-        await logChange('CANCEL', date, name, { 
-          reason: 'Employee removed from system',
-          desksRemaining: TOTAL_DESKS - filteredList.length
-        });
-      }
-    }
-    setBookings(updatedBookings);
-  };
-
-  const resetEmployees = async () => {
-    const defaultEmployees = [
-      'John Smith', 'Sarah Johnson', 'Mike Davis', 'Emma Wilson', 'Chris Brown',
-      'Lisa Garcia', 'David Lee', 'Anna Martinez', 'Ryan Taylor', 'Jessica White',
-      'Kevin Anderson', 'Michelle Thomas', 'Brian Jackson', 'Amy Rodriguez', 'Daniel Moore',
-      'Jennifer Lopez', 'Mark Thompson', 'Rachel Green', 'Steven Clark', 'Laura Hall',
-      'Peter Parker', 'Mary Jane', 'Tony Stark', 'Natasha Romanoff', 'Bruce Banner'
-    ];
-    setEmployees(defaultEmployees);
-    await saveEmployees(defaultEmployees);
-  };
-
-  // Initialize on component mount
-  useEffect(() => {
-    const initializeApp = async () => {
-      setLoading(true);
-      await loadEmployees();
-      await loadBookings();
-      setLoading(false);
-    };
-    initializeApp();
-  }, []);
- 
-  // Handle user persistence after employees load
-  useEffect(() => {
-    if (employees.length > 0) {
-      // Check if localStorage is available
-      if (typeof window !== 'undefined' && window.localStorage) {
-        const savedUser = localStorage.getItem('deskBookingCurrentUser');
-        if (savedUser && employees.includes(savedUser)) {
-          setCurrentUser(savedUser);
-        } else if (!employees.includes(currentUser)) {
-          setCurrentUser(employees[0]);
-        }
-      } else {
-        // No localStorage available, just ensure current user exists in employee list
-        if (!employees.includes(currentUser)) {
-          setCurrentUser(employees[0]);
-        }
-      }
-    }
-  }, [employees]); // Only depend on employees, not currentUser
-
-  // Reload current week's bookings when week changes
-  useEffect(() => {
-    const reloadCurrentWeek = async () => {
-      if (employees.length === 0) return; // Wait for initial load
-      
-      const weekdays = getNextWeekdays(5, currentWeek);
-      const updatedBookings = { ...bookings };
-      
-      for (const date of weekdays) {
-        try {
-          const docRef = doc(db, 'bookings', date);
-          const docSnap = await getDoc(docRef);
-          const employeeList = docSnap.exists() ? (docSnap.data().employees || []) : [];
-          updatedBookings[date] = employeeList;
-        } catch (error) {
-          console.error(`Error reloading bookings for ${date}:`, error);
-        }
-      }
-      
-      setBookings(updatedBookings);
-    };
-    
-    reloadCurrentWeek();
-  }, [currentWeek]); // Reload when week changes
-  
-  // Booking functions
   const getBookingsForDate = (date) => {
     return bookings[date] || [];
   };
 
-  const isUserBooked = (date, user) => {
-    return getBookingsForDate(date).includes(user);
-  };
-
-  const getAvailableDesks = (date) => {
-    return TOTAL_DESKS - getBookingsForDate(date).length;
-  };
-
-  const bookDesk = async (date, user) => {
+  const loadBookingsForDates = async (dates) => {
     try {
-      // CRITICAL FIX: Read current data from Firebase FIRST to avoid race conditions
-      const docRef = doc(db, 'bookings', date);
-      const docSnap = await getDoc(docRef);
-      const currentBookings = docSnap.exists() ? (docSnap.data().employees || []) : [];
+      const newBookings = { ...bookings };
       
-      // Check if user already has a booking
-      if (currentBookings.includes(user)) {
-        alert('You already have a booking for this date');
-        // Refresh local state to match reality
-        setBookings(prev => ({
-          ...prev,
-          [date]: currentBookings
-        }));
-        return;
-      }
-      
-      // Check if desks are still available
-      if (currentBookings.length >= TOTAL_DESKS) {
-        alert('Sorry, all desks are now booked for this date');
-        // Refresh local state to match reality
-        setBookings(prev => ({
-          ...prev,
-          [date]: currentBookings
-        }));
-        return;
-      }
-      
-      // Add the new booking to current data
-      const newBookings = [...currentBookings, user];
-      
-      // Update local state optimistically
-      setBookings(prev => ({
-        ...prev,
-        [date]: newBookings
-      }));
-      
-      // Save to Firebase
-      const success = await saveBooking(date, newBookings);
-      
-      if (success) {
-        // Log the booking
-        await logChange('BOOK', date, user, { 
-          desksRemaining: TOTAL_DESKS - newBookings.length 
-        });
-      } else {
-        // Revert local state if save failed
-        setBookings(prev => ({
-          ...prev,
-          [date]: currentBookings
-        }));
-      }
-    } catch (error) {
-      console.error('Error booking desk:', error);
-      alert('Failed to book desk. Please try again.');
-      // Reload bookings to get current state
-      await loadBookings();
-    }
-  };
-
-  const cancelBooking = async (date, user) => {
-    try {
-      // CRITICAL FIX: Read current data from Firebase FIRST to avoid race conditions
-      const docRef = doc(db, 'bookings', date);
-      const docSnap = await getDoc(docRef);
-      const currentBookings = docSnap.exists() ? (docSnap.data().employees || []) : [];
-      
-      // Check if user actually has a booking to cancel
-      if (!currentBookings.includes(user)) {
-        alert('No booking found for this date');
-        // Refresh local state to match reality
-        setBookings(prev => ({
-          ...prev,
-          [date]: currentBookings
-        }));
-        return;
-      }
-      
-      // Remove the user's booking
-      const newBookings = currentBookings.filter(bookedUser => bookedUser !== user);
-      
-      // Update local state optimistically
-      setBookings(prev => ({
-        ...prev,
-        [date]: newBookings
-      }));
-      
-      // Save to Firebase
-      const success = await saveBooking(date, newBookings);
-      
-      if (success) {
-        // Log the cancellation
-        await logChange('CANCEL', date, user, { 
-          desksRemaining: TOTAL_DESKS - newBookings.length 
-        });
-      } else {
-        // Revert local state if save failed
-        setBookings(prev => ({
-          ...prev,
-          [date]: currentBookings
-        }));
-      }
-    } catch (error) {
-      console.error('Error canceling booking:', error);
-      alert('Failed to cancel booking. Please try again.');
-      // Reload bookings to get current state
-      await loadBookings();
-    }
-  };
-
-  const getCapacityColor = (available, total) => {
-    const percentage = available / total;
-    if (percentage > 0.5) return 'text-green-600 bg-green-50 border-green-200';
-    if (percentage > 0.2) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-    return 'text-red-600 bg-red-50 border-red-200';
-  };
-
-  const getCapacityBadgeColor = (available, total) => {
-    const percentage = available / total;
-    if (percentage > 0.5) return 'bg-green-500';
-    if (percentage > 0.2) return 'bg-yellow-500';
-    return 'bg-red-500';
-  };
-
-  const getUserBookings = (user) => {
-    const userBookings = [];
-    const weekdays = getNextWeekdays(maxWeeksAhead * 5);
-    
-    weekdays.forEach(dateStr => {
-      if (isUserBooked(dateStr, user)) {
-        userBookings.push(dateStr);
-      }
-    });
-    
-    return userBookings.sort();
-  };
-
-  const bookAllWeek = async () => {
-    const weekdays = getNextWeekdays(5, currentWeek);
-    
-    // Check availability for each day by reading from Firebase
-    const availableDays = [];
-    for (const date of weekdays) {
-      try {
-        const docRef = doc(db, 'bookings', date);
-        const docSnap = await getDoc(docRef);
-        const currentBookings = docSnap.exists() ? (docSnap.data().employees || []) : [];
-        
-        const available = TOTAL_DESKS - currentBookings.length;
-        const userNotBooked = !currentBookings.includes(currentUser);
-        
-        if (available > 0 && userNotBooked) {
-          availableDays.push(date);
+      for (const date of dates) {
+        if (!newBookings[date]) {
+          const docRef = doc(db, 'bookings', date);
+          const docSnap = await getDoc(docRef);
+          
+          if (docSnap.exists()) {
+            newBookings[date] = docSnap.data().employees || [];
+          } else {
+            newBookings[date] = [];
+          }
         }
-      } catch (error) {
-        console.error(`Error checking availability for ${date}:`, error);
       }
+      
+      setBookings(newBookings);
+    } catch (error) {
+      console.error('Error loading bookings:', error);
+    }
+  };
+
+  const toggleBooking = async (date, employee) => {
+    // Prevent bookings after cutoff date
+    if (isDateUnavailable(date)) {
+      alert('Office is closed. Bookings are no longer available after February 4th, 2026.');
+      return;
+    }
+
+    const currentBookings = getBookingsForDate(date);
+    let newBookings;
+    let action;
+    
+    if (currentBookings.includes(employee)) {
+      newBookings = currentBookings.filter(e => e !== employee);
+      action = 'CANCEL';
+    } else {
+      if (currentBookings.length >= TOTAL_DESKS) {
+        alert(`Sorry, all ${TOTAL_DESKS} desks are already booked for ${formatDate(date)}`);
+        return;
+      }
+      newBookings = [...currentBookings, employee];
+      action = 'BOOK';
     }
     
-    if (availableDays.length === 0) {
-      alert('No available days to book this week');
+    const success = await saveBooking(date, newBookings);
+    if (success) {
+      setBookings({
+        ...bookings,
+        [date]: newBookings
+      });
+      
+      await logChange(action, date, employee);
+    }
+  };
+
+  const addEmployee = async (newEmployee) => {
+    if (!newEmployee.trim()) return;
+    
+    if (employees.includes(newEmployee)) {
+      alert('This employee already exists');
       return;
     }
     
-    const confirmed = window.confirm(`Book desks for all ${availableDays.length} available days this week?`);
-    if (confirmed) {
-      let successCount = 0;
-      for (const date of availableDays) {
-        try {
-          await bookDesk(date, currentUser);
-          successCount++;
-        } catch (error) {
-          console.error(`Failed to book ${date}:`, error);
+    const updatedEmployees = [...employees, newEmployee].sort();
+    setEmployees(updatedEmployees);
+    await saveEmployees(updatedEmployees);
+    await logChange('ADD_EMPLOYEE', null, newEmployee);
+  };
+
+  const removeEmployee = async (employeeToRemove) => {
+    if (!confirm(`Remove ${employeeToRemove}? This will cancel all their bookings.`)) {
+      return;
+    }
+    
+    const updatedEmployees = employees.filter(e => e !== employeeToRemove);
+    setEmployees(updatedEmployees);
+    await saveEmployees(updatedEmployees);
+    
+    const updatedBookings = { ...bookings };
+    for (const date in updatedBookings) {
+      if (updatedBookings[date].includes(employeeToRemove)) {
+        updatedBookings[date] = updatedBookings[date].filter(e => e !== employeeToRemove);
+        await saveBooking(date, updatedBookings[date]);
+      }
+    }
+    setBookings(updatedBookings);
+    
+    await logChange('REMOVE_EMPLOYEE', null, employeeToRemove);
+  };
+
+  useEffect(() => {
+    const initialize = async () => {
+      await loadEmployees();
+      
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const savedUser = localStorage.getItem('deskBookingCurrentUser');
+        if (savedUser) {
+          setCurrentUser(savedUser);
         }
       }
       
-      if (successCount < availableDays.length) {
-        alert(`Booked ${successCount} of ${availableDays.length} days. Some bookings may have failed.`);
-      }
+      const initialDates = getNextWeekdays(10, 0);
+      await loadBookingsForDates(initialDates);
       
-      // Reload to ensure we have current state
-      await loadBookings();
-    }
+      setLoading(false);
+    };
+    
+    initialize();
+  }, []);
+
+  useEffect(() => {
+    const dates = getNextWeekdays(10, currentWeek);
+    loadBookingsForDates(dates);
+  }, [currentWeek]);
+
+  const CalendarView = () => {
+    const weekDays = getNextWeekdays(5, currentWeek);
+    
+    // Check if we're on the final week (week containing Feb 4)
+    const isFinalWeek = weekDays.some(day => day === CUTOFF_DATE);
+    
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={() => setCurrentWeek(prev => prev - 1)}
+            disabled={currentWeek === 0}
+            className={`px-4 py-2 rounded-md flex items-center space-x-2 ${
+              currentWeek === 0
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-blue-500 text-white hover:bg-blue-600'
+            }`}
+          >
+            <ChevronLeft size={16} />
+            <span>Previous Week</span>
+          </button>
+          
+          <h2 className="text-xl font-semibold text-gray-900">
+            Week of {formatDate(weekDays[0])}
+            {isFinalWeek && (
+              <span className="ml-3 text-sm font-normal text-red-600 bg-red-50 px-3 py-1 rounded-full">
+                Final Week - Office Closing
+              </span>
+            )}
+          </h2>
+          
+          <button
+            onClick={() => setCurrentWeek(prev => prev + 1)}
+            disabled={isFinalWeek}
+            className={`px-4 py-2 rounded-md flex items-center space-x-2 ${
+              isFinalWeek
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-blue-500 text-white hover:bg-blue-600'
+            }`}
+          >
+            <span>Next Week</span>
+            <ChevronRight size={16} />
+          </button>
+        </div>
+
+        {isFinalWeek && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Office Closing Notice</h3>
+                <div className="mt-2 text-sm text-red-700">
+                  <p>The Market Street office is closing. Last bookable day is <strong>Wednesday, February 4th, 2026</strong>.</p>
+                  <p className="mt-1">Days after this date are unavailable for booking.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          {weekDays.map(date => {
+            const dayBookings = getBookingsForDate(date);
+            const isBooked = dayBookings.includes(currentUser);
+            const availableDesks = TOTAL_DESKS - dayBookings.length;
+            const isPastCutoff = isDateUnavailable(date);
+            
+            return (
+              <div 
+                key={date} 
+                className={`border rounded-lg overflow-hidden ${
+                  isPastCutoff ? 'bg-red-50 border-red-300' : 'bg-white'
+                }`}
+              >
+                <div className={`p-3 font-medium text-center ${
+                  isPastCutoff 
+                    ? 'bg-red-600 text-white' 
+                    : isBooked 
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-gray-100 text-gray-900'
+                }`}>
+                  {formatShortDate(date)}
+                </div>
+                
+                <div className="p-4">
+                  {isPastCutoff ? (
+                    <div className="text-center">
+                      <div className="text-red-600 font-semibold mb-2">UNAVAILABLE</div>
+                      <div className="text-xs text-red-500">Office Closed</div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm text-gray-600">Available:</span>
+                        <span className={`text-sm font-semibold ${
+                          availableDesks === 0 ? 'text-red-500' :
+                          availableDesks < 5 ? 'text-yellow-600' : 'text-green-600'
+                        }`}>
+                          {availableDesks}/{TOTAL_DESKS}
+                        </span>
+                      </div>
+                      
+                      <button
+                        onClick={() => toggleBooking(date, currentUser)}
+                        disabled={!isBooked && availableDesks === 0}
+                        className={`w-full py-2 px-3 rounded-md font-medium text-sm transition-colors ${
+                          isBooked
+                            ? 'bg-red-500 text-white hover:bg-red-600'
+                            : availableDesks === 0
+                            ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            : 'bg-blue-500 text-white hover:bg-blue-600'
+                        }`}
+                      >
+                        {isBooked ? 'Cancel Booking' : availableDesks === 0 ? 'Fully Booked' : 'Book Desk'}
+                      </button>
+                      
+                      <button
+                        onClick={() => {
+                          setSelectedDate(date);
+                          setActiveView('daily');
+                        }}
+                        className="w-full mt-2 py-1 px-3 rounded-md text-sm text-gray-600 hover:bg-gray-100 flex items-center justify-center space-x-1"
+                      >
+                        <Eye size={14} />
+                        <span>View Details</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   };
 
-  // AUDIT LOG VIEW - NEW!
+  const MyBookingsView = () => {
+    const myBookings = Object.entries(bookings)
+      .filter(([date, employees]) => employees.includes(currentUser))
+      .map(([date]) => date)
+      .sort();
+    
+    return (
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-gray-900">My Bookings</h2>
+        
+        {myBookings.length === 0 ? (
+          <div className="text-center py-12">
+            <Calendar size={48} className="mx-auto text-gray-300 mb-4" />
+            <p className="text-gray-500 text-lg">You have no upcoming bookings</p>
+            <button
+              onClick={() => setActiveView('calendar')}
+              className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+            >
+              Book a Desk
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {myBookings.map(date => {
+              const dayBookings = getBookingsForDate(date);
+              const isPastCutoff = isDateUnavailable(date);
+              
+              return (
+                <div 
+                  key={date} 
+                  className={`border rounded-lg p-4 ${
+                    isPastCutoff ? 'bg-red-50 border-red-200' : 'bg-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-3">
+                        <Calendar size={20} className={isPastCutoff ? 'text-red-500' : 'text-blue-500'} />
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {formatDate(date)}
+                            {isPastCutoff && (
+                              <span className="ml-2 text-xs bg-red-100 text-red-700 px-2 py-1 rounded">
+                                Office Closed
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {dayBookings.length}/{TOTAL_DESKS} desks booked
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => {
+                          setSelectedDate(date);
+                          setActiveView('daily');
+                        }}
+                        className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded-md"
+                      >
+                        View Details
+                      </button>
+                      {!isPastCutoff && (
+                        <button
+                          onClick={() => toggleBooking(date, currentUser)}
+                          className="px-3 py-1 text-sm bg-red-500 text-white rounded-md hover:bg-red-600"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const DashboardView = () => {
+    const allDates = Object.keys(bookings).sort();
+    const totalBookings = allDates.reduce((sum, date) => sum + bookings[date].length, 0);
+    const averageOccupancy = allDates.length > 0 
+      ? ((totalBookings / (allDates.length * TOTAL_DESKS)) * 100).toFixed(1)
+      : 0;
+    
+    const employeeStats = employees.map(employee => {
+      const bookingCount = allDates.filter(date => 
+        bookings[date].includes(employee)
+      ).length;
+      return { employee, bookingCount };
+    }).sort((a, b) => b.bookingCount - a.bookingCount);
+
+    const upcomingDays = getNextWeekdays(10, 0);
+    
+    return (
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
+
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-yellow-800">Office Closing</h3>
+              <div className="mt-2 text-sm text-yellow-700">
+                <p>Last bookable day is <strong>Wednesday, February 4th, 2026</strong>. The office will be closed after this date.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div className="grid md:grid-cols-3 gap-6">
+          <div className="bg-white p-6 rounded-lg border">
+            <div className="text-sm text-gray-600 mb-1">Total Bookings</div>
+            <div className="text-3xl font-bold text-gray-900">{totalBookings}</div>
+          </div>
+          
+          <div className="bg-white p-6 rounded-lg border">
+            <div className="text-sm text-gray-600 mb-1">Average Occupancy</div>
+            <div className="text-3xl font-bold text-gray-900">{averageOccupancy}%</div>
+          </div>
+          
+          <div className="bg-white p-6 rounded-lg border">
+            <div className="text-sm text-gray-600 mb-1">Total Employees</div>
+            <div className="text-3xl font-bold text-gray-900">{employees.length}</div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg border">
+          <h3 className="text-lg font-semibold mb-4">Upcoming Week Overview</h3>
+          <div className="space-y-2">
+            {upcomingDays.slice(0, 5).map(date => {
+              const dayBookings = getBookingsForDate(date);
+              const percentage = (dayBookings.length / TOTAL_DESKS) * 100;
+              const isPastCutoff = isDateUnavailable(date);
+              
+              return (
+                <div key={date} className="flex items-center space-x-3">
+                  <div className="w-32 text-sm font-medium text-gray-700">
+                    {formatShortDate(date)}
+                  </div>
+                  <div className="flex-1 bg-gray-200 rounded-full h-6 relative">
+                    <div 
+                      className={`h-6 rounded-full flex items-center justify-end pr-2 text-xs text-white font-medium transition-all ${
+                        isPastCutoff ? 'bg-red-500' :
+                        percentage > 75 ? 'bg-red-500' :
+                        percentage > 50 ? 'bg-yellow-500' : 'bg-green-500'
+                      }`}
+                      style={{ width: `${isPastCutoff ? 100 : percentage}%` }}
+                    >
+                      {isPastCutoff ? 'CLOSED' : `${dayBookings.length}/${TOTAL_DESKS}`}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSelectedDate(date);
+                      setActiveView('daily');
+                    }}
+                    className="text-blue-600 hover:text-blue-800 text-sm"
+                  >
+                    <Eye size={16} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg border">
+          <h3 className="text-lg font-semibold mb-4">Top Desk Users</h3>
+          <div className="space-y-2">
+            {employeeStats.slice(0, 10).map(({ employee, bookingCount }) => (
+              <div key={employee} className="flex items-center justify-between py-2 border-b last:border-b-0">
+                <div className="flex items-center space-x-2">
+                  <User size={16} className="text-gray-500" />
+                  <span className="text-sm">{employee}</span>
+                </div>
+                <span className="text-sm font-medium text-gray-900">{bookingCount} days</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const AuditLogView = () => {
     const [logs, setLogs] = useState([]);
-    const [logLoading, setLogLoading] = useState(true);
+    const [loading, setLoading] = useState(true);
+    const [filter, setFilter] = useState('all');
 
     useEffect(() => {
       const loadLogs = async () => {
         try {
           const logsRef = collection(db, 'audit_log');
           const q = query(logsRef, orderBy('timestamp', 'desc'), limit(100));
-          const snapshot = await getDocs(q);
+          const querySnapshot = await getDocs(q);
           
-          const logData = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
+          const loadedLogs = [];
+          querySnapshot.forEach((doc) => {
+            loadedLogs.push({ id: doc.id, ...doc.data() });
+          });
           
-          setLogs(logData);
+          setLogs(loadedLogs);
         } catch (error) {
-          console.error('Error loading logs:', error);
+          console.error('Error loading audit logs:', error);
         } finally {
-          setLogLoading(false);
+          setLoading(false);
         }
       };
-      
+
       loadLogs();
     }, []);
+
+    const filteredLogs = filter === 'all' 
+      ? logs 
+      : logs.filter(log => log.action === filter);
 
     const formatTimestamp = (timestamp) => {
       return new Date(timestamp).toLocaleString('en-AU', {
@@ -623,382 +740,136 @@ const DeskBookingApp = () => {
 
     const getActionColor = (action) => {
       switch(action) {
-        case 'BOOK': return 'text-green-600 bg-green-50 border-green-200';
-        case 'CANCEL': return 'text-red-600 bg-red-50 border-red-200';
-        case 'REMOVE_EMPLOYEE': return 'text-orange-600 bg-orange-50 border-orange-200';
-        case 'ADD_EMPLOYEE': return 'text-blue-600 bg-blue-50 border-blue-200';
-        default: return 'text-gray-600 bg-gray-50 border-gray-200';
+        case 'BOOK': return 'bg-green-100 text-green-800';
+        case 'CANCEL': return 'bg-red-100 text-red-800';
+        case 'ADD_EMPLOYEE': return 'bg-blue-100 text-blue-800';
+        case 'REMOVE_EMPLOYEE': return 'bg-orange-100 text-orange-800';
+        default: return 'bg-gray-100 text-gray-800';
       }
     };
 
-    const getActionText = (log) => {
-      switch(log.action) {
-        case 'BOOK':
-          return `${log.performedBy} booked a desk for ${log.affectedUser}`;
-        case 'CANCEL':
-          if (log.reason) {
-            return `${log.affectedUser}'s booking was cancelled (${log.reason})`;
-          }
-          return `${log.performedBy} cancelled ${log.affectedUser}'s booking`;
-        case 'REMOVE_EMPLOYEE':
-          return `${log.performedBy} removed ${log.affectedUser} from the employee list`;
-        case 'ADD_EMPLOYEE':
-          return `${log.performedBy} added ${log.affectedUser} to the employee list`;
-        default:
-          return `${log.performedBy} performed ${log.action} for ${log.affectedUser}`;
-      }
-    };
+    if (loading) {
+      return (
+        <div className="text-center py-8">
+          <div className="text-gray-500">Loading audit logs...</div>
+        </div>
+      );
+    }
 
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold text-gray-900">Audit Log</h2>
-          <div className="text-sm text-gray-500">
-            Showing last 100 actions
-          </div>
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="px-3 py-2 border rounded-md text-sm"
+          >
+            <option value="all">All Actions</option>
+            <option value="BOOK">Bookings</option>
+            <option value="CANCEL">Cancellations</option>
+            <option value="ADD_EMPLOYEE">Employee Additions</option>
+            <option value="REMOVE_EMPLOYEE">Employee Removals</option>
+          </select>
         </div>
-        
-        {logLoading ? (
-          <div className="text-center py-12">
-            <div className="text-lg font-medium text-gray-900 mb-2">Loading audit logs...</div>
-            <div className="text-sm text-gray-500">Fetching activity history</div>
-          </div>
-        ) : logs.length === 0 ? (
+
+        {filteredLogs.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
             <FileText className="mx-auto h-12 w-12 text-gray-300 mb-4" />
-            <p className="text-lg font-medium">No audit logs yet</p>
-            <p className="text-sm mt-1">Activity will appear here as users book and cancel desks</p>
+            <p>No audit logs found</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {logs.map(log => (
-              <div key={log.id} className={`p-4 border rounded-lg ${getActionColor(log.action)}`}>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <span className={`px-3 py-1 rounded-md text-xs font-semibold uppercase ${getActionColor(log.action)}`}>
-                        {log.action.replace('_', ' ')}
-                      </span>
-                      <span className="text-sm text-gray-600">
+          <div className="bg-white rounded-lg border overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Timestamp
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Action
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Performed By
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Affected User
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Date
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {formatTimestamp(log.timestamp)}
-                      </span>
-                    </div>
-                    <div className="text-sm">
-                      {getActionText(log)}
-                      {log.date && (
-                        <>
-                          {' on '}
-                          <strong>{formatDate(log.date)}</strong>
-                        </>
-                      )}
-                    </div>
-                    {log.desksRemaining !== undefined && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        {log.desksRemaining} desk(s) remaining after this action
-                      </div>
-                    )}
-                    {log.totalEmployees !== undefined && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        Total employees: {log.totalEmployees}
-                      </div>
-                    )}
-                    {log.bookingsAffected !== undefined && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        {log.bookingsAffected} booking(s) cancelled
-                      </div>
-                    )}
-                    {log.reason && (
-                      <div className="text-xs text-gray-500 mt-1 italic">
-                        {log.reason}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getActionColor(log.action)}`}>
+                          {log.action}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {log.performedBy}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {log.affectedUser || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {log.date ? formatShortDate(log.date) : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
-      </div>
-    );
-  };
-  
-  // Component views
-  const WeekNavigator = () => (
-    <div className="flex items-center justify-between bg-gray-100 p-4 rounded-lg mb-6">
-      <button
-        onClick={() => setCurrentWeek(Math.max(0, currentWeek - 1))}
-        disabled={currentWeek === 0}
-        className={`flex items-center px-4 py-2 rounded-lg ${
-          currentWeek === 0 
-            ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-            : 'bg-white text-gray-700 hover:bg-gray-50 shadow-sm'
-        }`}
-      >
-        <ChevronLeft size={16} className="mr-1" />
-        Previous Week
-      </button>
-      
-      <div className="text-center">
-        <div className="font-semibold text-lg">
-          {currentWeek === 0 ? 'This Week' : currentWeek === 1 ? 'Next Week' : `Week ${currentWeek + 1}`}
-        </div>
-        <div className="text-sm text-gray-600">
-          {getWeekRange(currentWeek)}
-        </div>
-      </div>
-      
-      <button
-        onClick={() => setCurrentWeek(currentWeek + 1)}
-        disabled={currentWeek >= maxWeeksAhead - 1}
-        className={`flex items-center px-4 py-2 rounded-lg ${
-          currentWeek >= maxWeeksAhead - 1
-            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            : 'bg-white text-gray-700 hover:bg-gray-50 shadow-sm'
-        }`}
-      >
-        Next Week
-        <ChevronRight size={16} className="ml-1" />
-      </button>
-    </div>
-  );
-
-  const CalendarView = () => {
-    const weekdays = getNextWeekdays(5, currentWeek);
-    
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-gray-900">Book a Desk</h2>
-          <div className="text-sm text-gray-500">
-            Logged in as: <span className="font-medium">{currentUser}</span>
-          </div>
-        </div>
-        
-        <WeekNavigator />
-
-        <div className="flex justify-end mb-4">
-          <button
-            onClick={bookAllWeek}
-            className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 flex items-center space-x-2 transition-colors"
-          >
-            <Plus size={16} />
-            <span>Book All Week</span>
-          </button>
-        </div>
-   
-        <div className="space-y-3">
-          {weekdays.map(date => {
-            const available = getAvailableDesks(date);
-            const booked = getBookingsForDate(date).length;
-            const userHasBooking = isUserBooked(date, currentUser);
-            
-            return (
-              <div key={date} className={`p-4 rounded-lg border-2 ${getCapacityColor(available, TOTAL_DESKS)}`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="font-semibold text-lg">{formatDate(date)}</div>
-                    <div className="text-sm">
-                      {booked}/{TOTAL_DESKS} desks booked • {available} available
-                    </div>
-                    {userHasBooking && (
-                      <div className="text-sm font-medium text-blue-600 mt-1">
-                        ✓ You have a desk booked
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-3 h-3 rounded-full ${getCapacityBadgeColor(available, TOTAL_DESKS)}`}></div>
-                    
-                    {userHasBooking ? (
-                      <button
-                        onClick={() => cancelBooking(date, currentUser)}
-                        className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center space-x-2 transition-colors"
-                      >
-                        <X size={16} />
-                        <span>Cancel</span>
-                      </button>
-                    ) : available > 0 ? (
-                      <button
-                        onClick={() => bookDesk(date, currentUser)}
-                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center space-x-2 transition-colors"
-                      >
-                        <Plus size={16} />
-                        <span>Book Desk</span>
-                      </button>
-                    ) : (
-                      <div className="px-4 py-2 bg-gray-300 text-gray-500 rounded-lg">
-                        Fully Booked
-                      </div>
-                    )}
-                    
-                    <button
-                      onClick={() => {setSelectedDate(date); setActiveView('daily');}}
-                      className="px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg flex items-center space-x-1 text-sm transition-colors"
-                      title="View who's coming in"
-                    >
-                      <Eye size={16} />
-                      <span>View ({booked})</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
-  const MyBookingsView = () => {
-    const myBookings = getUserBookings(currentUser);
-    
-    return (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-gray-900">My Bookings</h2>
-        
-        {myBookings.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
-            <Calendar className="mx-auto h-12 w-12 text-gray-300 mb-4" />
-            <p>No upcoming bookings</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {myBookings.map(date => (
-              <div key={date} className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold">{formatDate(date)}</div>
-                    <div className="text-sm text-gray-600">
-                      Desk reserved • {getBookingsForDate(date).length}/{TOTAL_DESKS} total bookings
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => cancelBooking(date, currentUser)}
-                    className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center space-x-2 transition-colors"
-                  >
-                    <X size={16} />
-                    <span>Cancel</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const DashboardView = () => {
-    const weekDays = getNextWeekdays(5, currentWeek);
-    
-    return (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-gray-900">Weekly Overview</h2>
-        
-        <WeekNavigator />
-        
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-          {weekDays.map(date => {
-            const booked = getBookingsForDate(date).length;
-            const available = TOTAL_DESKS - booked;
-            const percentage = Math.round((booked / TOTAL_DESKS) * 100);
-            
-            return (
-              <div key={date} className="bg-white p-4 rounded-lg border shadow-sm">
-                <div className="text-sm font-medium text-gray-500 mb-2">
-                  {formatDate(date)}
-                </div>
-                <div className="text-2xl font-bold mb-2">
-                  {percentage}%
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
-                  <div 
-                    className={`h-2 rounded-full transition-all duration-300 ${
-                      percentage > 80 ? 'bg-red-500' :
-                      percentage > 60 ? 'bg-yellow-500' : 'bg-green-500'
-                    }`}
-                    style={{ width: `${percentage}%` }}
-                  />
-                </div>
-                <div className="text-sm text-gray-600">
-                  {booked}/{TOTAL_DESKS} desks booked
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        
-        <div className="bg-white p-6 rounded-lg border shadow-sm">
-          <h3 className="text-lg font-semibold mb-4">Weekly Statistics</h3>
-          <div className="grid md:grid-cols-3 gap-6">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-blue-600">
-                {weekDays.length > 0 ? Math.round(weekDays.reduce((sum, date) => sum + getBookingsForDate(date).length, 0) / weekDays.length) : 0}
-              </div>
-              <div className="text-sm text-gray-600 mt-1">Avg Daily Bookings</div>
-            </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-green-600">
-                {weekDays.length > 0 ? Math.max(...weekDays.map(date => getBookingsForDate(date).length)) : 0}
-              </div>
-              <div className="text-sm text-gray-600 mt-1">Peak Day Bookings</div>
-            </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-purple-600">
-                {weekDays.length > 0 ? Math.round((weekDays.reduce((sum, date) => sum + getBookingsForDate(date).length, 0) / (weekDays.length * TOTAL_DESKS)) * 100) : 0}%
-              </div>
-              <div className="text-sm text-gray-600 mt-1">Avg Occupancy</div>
-            </div>
-          </div>
-        </div>
       </div>
     );
   };
 
   const EmployeeManagementView = () => {
     const [newEmployeeName, setNewEmployeeName] = useState('');
-
-    const handleAddEmployee = (e) => {
-      e.preventDefault();
+    
+    const handleAddEmployee = () => {
       if (newEmployeeName.trim()) {
-        addEmployee(newEmployeeName);
+        addEmployee(newEmployeeName.trim());
         setNewEmployeeName('');
       }
     };
 
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-gray-900">Employee Management</h2>
-          <div className="text-sm text-gray-500">
-            Total: <span className="font-medium">{employees.length} employees</span>
-          </div>
-        </div>
-
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <h3 className="font-semibold text-green-900 mb-3">Add New Employee</h3>
-          <form onSubmit={handleAddEmployee} className="flex space-x-2">
+        <h2 className="text-2xl font-bold text-gray-900">Manage Employees</h2>
+        
+        <div className="bg-white p-6 rounded-lg border">
+          <h3 className="text-lg font-semibold mb-4">Add New Employee</h3>
+          <div className="flex space-x-2">
             <input
               type="text"
-              placeholder="Enter employee name..."
               value={newEmployeeName}
               onChange={(e) => setNewEmployeeName(e.target.value)}
-              className="flex-1 px-3 py-2 border border-green-300 rounded-md text-sm"
+              onKeyPress={(e) => e.key === 'Enter' && handleAddEmployee()}
+              placeholder="Enter employee name"
+              className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button
-              type="submit"
-              disabled={!newEmployeeName.trim()}
-              className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-gray-400 text-sm"
+              onClick={handleAddEmployee}
+              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 flex items-center space-x-2"
             >
-              Add Employee
+              <Plus size={16} />
+              <span>Add</span>
             </button>
-          </form>
+          </div>
         </div>
-
+        
         <div className="bg-white rounded-lg border">
           <div className="p-4 border-b">
-            <h3 className="font-semibold text-gray-900">Current Employees</h3>
+            <h3 className="text-lg font-semibold">Current Employees ({employees.length})</h3>
           </div>
           
           <div className="p-4">
@@ -1034,6 +905,7 @@ const DeskBookingApp = () => {
 
   const DailyView = () => {
     const dayBookings = getBookingsForDate(selectedDate);
+    const isPastCutoff = isDateUnavailable(selectedDate);
     
     return (
       <div className="space-y-6">
@@ -1046,41 +918,57 @@ const DeskBookingApp = () => {
           </button>
           <h2 className="text-2xl font-bold text-gray-900">
             {formatDate(selectedDate)}
+            {isPastCutoff && (
+              <span className="ml-3 text-sm font-normal bg-red-100 text-red-700 px-3 py-1 rounded-full">
+                Office Closed
+              </span>
+            )}
           </h2>
         </div>
         
-        <div className="bg-white p-6 rounded-lg border shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">Office Occupancy</h3>
-            <div className="text-sm text-gray-500">
-              {dayBookings.length}/{TOTAL_DESKS} desks booked
+        <div className={`p-6 rounded-lg border shadow-sm ${
+          isPastCutoff ? 'bg-red-50 border-red-200' : 'bg-white'
+        }`}>
+          {isPastCutoff ? (
+            <div className="text-center py-8">
+              <div className="text-red-600 text-xl font-semibold mb-2">Office Closed</div>
+              <p className="text-red-500">This date is after the office closure on February 4th, 2026</p>
             </div>
-          </div>
-          
-          <div className="w-full bg-gray-200 rounded-full h-3 mb-6">
-            <div 
-              className={`h-3 rounded-full transition-all duration-300 ${
-                dayBookings.length > 14 ? 'bg-red-500' :
-                dayBookings.length > 10 ? 'bg-yellow-500' : 'bg-green-500'
-              }`}
-              style={{ width: `${(dayBookings.length / TOTAL_DESKS) * 100}%` }}
-            />
-          </div>
-          
-          {dayBookings.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">No bookings for this day</p>
           ) : (
-            <div>
-              <h4 className="font-medium mb-3">Who's Coming In ({dayBookings.length}):</h4>
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2">
-                {dayBookings.sort().map((employee, index) => (
-                  <div key={index} className="flex items-center space-x-2 p-2 bg-blue-50 rounded border border-blue-100">
-                    <User size={16} className="text-blue-600" />
-                    <span className="text-sm">{employee}</span>
-                  </div>
-                ))}
+            <>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Office Occupancy</h3>
+                <div className="text-sm text-gray-500">
+                  {dayBookings.length}/{TOTAL_DESKS} desks booked
+                </div>
               </div>
-            </div>
+              
+              <div className="w-full bg-gray-200 rounded-full h-3 mb-6">
+                <div 
+                  className={`h-3 rounded-full transition-all duration-300 ${
+                    dayBookings.length > 14 ? 'bg-red-500' :
+                    dayBookings.length > 10 ? 'bg-yellow-500' : 'bg-green-500'
+                  }`}
+                  style={{ width: `${(dayBookings.length / TOTAL_DESKS) * 100}%` }}
+                />
+              </div>
+              
+              {dayBookings.length === 0 ? (
+                <p className="text-gray-500 text-center py-8">No bookings for this day</p>
+              ) : (
+                <div>
+                  <h4 className="font-medium mb-3">Who's Coming In ({dayBookings.length}):</h4>
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {dayBookings.sort().map((employee, index) => (
+                      <div key={index} className="flex items-center space-x-2 p-2 bg-blue-50 rounded border border-blue-100">
+                        <User size={16} className="text-blue-600" />
+                        <span className="text-sm">{employee}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1104,6 +992,9 @@ const DeskBookingApp = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Adbri Market Street Office Desk Bookings</h1>
           <p className="text-gray-600 mb-3">Manage your weekday workspace reservations • {TOTAL_DESKS} desks available</p>
+          <div className="bg-red-100 border border-red-300 text-red-700 px-4 py-2 rounded-lg inline-block">
+            <strong>Notice:</strong> Last bookable day is Wednesday, February 4th, 2026
+          </div>
         </div>
 
         <div className="mb-6">
