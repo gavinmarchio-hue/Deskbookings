@@ -172,7 +172,7 @@ const DeskBookingApp = () => {
     }
   };
 
-  // Utility function for Australian timezone - weekdays only
+  // Utility function for Australian timezone - weekdays only (Monday-Friday)
   const getNextWeekdays = (count = 5, weekOffset = 0) => {
     const days = [];
     
@@ -207,16 +207,12 @@ const DeskBookingApp = () => {
     const targetMonday = new Date(australianTime);
     targetMonday.setDate(australianTime.getDate() + daysToLastMonday + (weekOffset * 7));
     
-    // Generate weekdays
-    for (let i = 0; i < count; i++) {
+    // Generate exactly 5 weekdays: Monday through Friday
+    for (let i = 0; i < 5; i++) {
       const targetDate = new Date(targetMonday);
       targetDate.setDate(targetMonday.getDate() + i);
-      
-      const dayOfWeek = targetDate.getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        const dateString = targetDate.toISOString().split('T')[0];
-        days.push(dateString);
-      }
+      const dateString = targetDate.toISOString().split('T')[0];
+      days.push(dateString);
     }
     
     return days;
@@ -1011,28 +1007,6 @@ const DeskBookingApp = () => {
               Book Desk
             </button>
             <button
-              onClick={() => setActiveView('bookings')}
-              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeView === 'bookings'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <User size={16} className="inline mr-2" />
-              My Bookings
-            </button>
-            <button
-              onClick={() => setActiveView('dashboard')}
-              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeView === 'dashboard'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <BarChart3 size={16} className="inline mr-2" />
-              Dashboard
-            </button>
-            <button
               onClick={() => setActiveView('employees')}
               className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 activeView === 'employees'
@@ -1061,8 +1035,6 @@ const DeskBookingApp = () => {
 
         <div className="bg-white rounded-lg shadow-sm border p-6">
           {activeView === 'calendar' && <CalendarView />}
-          {activeView === 'bookings' && <MyBookingsView />}
-          {activeView === 'dashboard' && <DashboardView />}
           {activeView === 'employees' && <EmployeeManagementView />}
           {activeView === 'daily' && <DailyView />}
           {activeView === 'auditlog' && <AuditLogView />}
